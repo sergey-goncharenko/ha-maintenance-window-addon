@@ -1,10 +1,14 @@
 #include <tunables/global>
 
-profile maintenance_window flags=(attach_disconnected,mediate_deleted) {
+profile {{ profile_name }} flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
-  # Capabilities
+  # Basic file and network access for curl -> http://supervisor.
   file,
+  network inet stream,
+  network inet6 stream,
+
+  # Signals used by s6-overlay during normal service lifecycle.
   signal (send) set=(kill,term,int,hup,cont),
 
   # S6-Overlay
@@ -15,11 +19,18 @@ profile maintenance_window flags=(attach_disconnected,mediate_deleted) {
   /package/** ix,
   /run/{s6,s6-rc*,service}/** ix,
   /etc/s6-overlay/** ix,
-  run/{,**} rwk,
-  dev/tty rw,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Runtime files commonly read by curl and process tools.
+  /etc/hosts r,
+  /etc/hostname r,
+  /etc/resolv.conf r,
+  /etc/ssl/** r,
+  /tmp/{,**} rwk,
 
   # Add-on data
-  /data/** rw,
+  /data/{,**} rwk,
 
   # Bashio + add-on scripts
   /usr/lib/bashio/** r,

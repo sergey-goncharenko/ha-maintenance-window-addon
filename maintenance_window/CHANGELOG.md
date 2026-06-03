@@ -3,6 +3,10 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.1
+
+- Fix the AppArmor profile so Supervisor can load it during installation.
+
 ## 0.4.0
 
 - Make the default configuration non-mutating with `dry_run: true` and
