@@ -3,6 +3,12 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.0
+
+- Add per-window `restart_core`, `stop_addons`, and `start_addons` overrides.
+- Keep global action options as defaults for windows that omit per-window
+  actions.
+
 ## 0.5.0
 
 - Publish and use a prebuilt GHCR image so HAOS does not need to build the add-on

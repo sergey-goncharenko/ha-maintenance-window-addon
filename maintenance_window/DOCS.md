@@ -17,6 +17,9 @@ so it can start Core back up). On a schedule you define, it:
 5. Starts Home Assistant Core and previously stopped add-ons again.
 6. Stops add-ons it temporarily started, leaving already-running add-ons alone.
 
+The global `restart_core`, `stop_addons`, and `start_addons` options are defaults.
+Each window can override them with its own values.
+
 It talks to the [Supervisor API](https://developers.home-assistant.io/docs/api/supervisor/endpoints)
 using the add-on's `SUPERVISOR_TOKEN`. This requires `hassio_api: true` and
 `hassio_role: manager` (already set in the add-on configuration).
@@ -52,6 +55,10 @@ windows:
   - name: Nightly maintenance
     start_time: "03:00"
     duration_minutes: 10
+    restart_core: true
+    stop_addons:
+      - core_mosquitto
+    start_addons: []
     days:
       - mon
       - tue
@@ -149,7 +156,51 @@ A list of maintenance windows. Each entry has:
 | `name` | Friendly label used in logs. |
 | `start_time` | 24-hour `HH:MM` local time the window begins. |
 | `duration_minutes` | How long Core/add-ons stay stopped (1–1440). |
+| `restart_core` | Optional per-window Core stop/restart override. |
+| `stop_addons` | Optional per-window list of add-ons to stop. |
+| `start_addons` | Optional per-window list of add-ons to start temporarily. |
 | `days` | Days of week the window runs (`mon`–`sun`). |
+
+If a window omits `restart_core`, `stop_addons`, or `start_addons`, the global
+setting with the same name is used.
+
+Example with two different window actions:
+
+```yaml
+log_level: info
+dry_run: true
+restart_core: false
+core_stop_confirmation: ""
+startup_grace_seconds: 300
+max_core_stop_minutes: 60
+stop_addons: []
+start_addons: []
+windows:
+  - name: Core maintenance
+    start_time: "03:00"
+    duration_minutes: 10
+    restart_core: true
+    stop_addons:
+      - core_mosquitto
+    start_addons: []
+    days:
+      - sun
+  - name: Temporary SSH access
+    start_time: "01:00"
+    duration_minutes: 30
+    restart_core: false
+    stop_addons: []
+    start_addons:
+      - core_ssh
+    days:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+      - sat
+      - sun
+```
 
 ## Finding add-on slugs
 

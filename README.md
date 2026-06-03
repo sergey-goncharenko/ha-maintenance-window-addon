@@ -17,6 +17,7 @@ Typical use cases:
 - Reduce automation noise / device polling during the night.
 - Force a clean, scheduled restart of Core on a regular cadence.
 - Temporarily open an add-on such as SSH for a short break-glass access window.
+- Use different Core/add-on actions for different scheduled windows.
 
 ## Add-ons in this repository
 

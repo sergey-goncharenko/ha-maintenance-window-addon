@@ -59,6 +59,21 @@ configuration:
       duration_minutes:
         name: Duration (minutes)
         description: How long Core and the selected add-ons stay stopped (1-1440).
+      restart_core:
+        name: Stop & restart Home Assistant Core
+        description: >-
+          Optional per-window override. When omitted, the global Stop & restart
+          Home Assistant Core setting is used.
+      stop_addons:
+        name: Add-ons to stop
+        description: >-
+          Optional per-window override. When omitted, the global Add-ons to stop
+          list is used.
+      start_addons:
+        name: Add-ons to start temporarily
+        description: >-
+          Optional per-window override. When omitted, the global Add-ons to start
+          temporarily list is used.
       days:
         name: Days
         description: Days of the week this window runs (mon through sun).

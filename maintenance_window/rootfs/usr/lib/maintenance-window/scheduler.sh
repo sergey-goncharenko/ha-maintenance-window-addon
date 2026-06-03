@@ -100,16 +100,51 @@ config_int() {
 }
 
 # -----------------------------------------------------------------------------
+# Read a boolean config value that can fall back from a window field to a global.
+# -----------------------------------------------------------------------------
+config_true_with_fallback() {
+    local window_key="${1}"
+    local global_key="${2}"
+    local value
+
+    value="$(bashio::config "${window_key}" '__missing__')"
+    if [[ "${value}" == "__missing__" ]]; then
+        bashio::config.true "${global_key}"
+        return $?
+    fi
+
+    [[ "${value}" == "true" ]]
+}
+
+# -----------------------------------------------------------------------------
+# Emit a window list option, falling back to the global list when absent.
+# -----------------------------------------------------------------------------
+config_list_with_fallback() {
+    local window_key="${1}"
+    local global_key="${2}"
+    local value
+
+    value="$(bashio::config "${window_key}" '__missing__')"
+    if [[ "${value}" == "__missing__" ]]; then
+        bashio::config "${global_key}"
+        return 0
+    fi
+
+    printf '%s\n' "${value}"
+}
+
+# -----------------------------------------------------------------------------
 # Return true when stopping Core is deliberately armed and safe for this window.
 # -----------------------------------------------------------------------------
 should_stop_core_for_window() {
     local duration_minutes="${1}"
+    local window_index="${2}"
     local confirmation
     local startup_grace_seconds
     local max_core_stop_minutes
     local uptime_seconds
 
-    if ! bashio::config.true 'restart_core'; then
+    if ! config_true_with_fallback "windows[${window_index}].restart_core" 'restart_core'; then
         bashio::log.info "restart_core is disabled; leaving Core running."
         return 1
     fi
@@ -354,6 +389,7 @@ handle_shutdown() {
 run_maintenance_window() {
     local duration_minutes="${1}"
     local name="${2:-Scheduled maintenance}"
+    local window_index="${3}"
     local slug
     local -a addons_to_restart=()
     local -a temporary_addons_to_stop=()
@@ -367,7 +403,7 @@ run_maintenance_window() {
         if start_addon_if_stopped "${slug}"; then
             temporary_addons_to_stop+=("${slug}")
         fi
-    done < <(bashio::config 'start_addons')
+    done < <(config_list_with_fallback "windows[${window_index}].start_addons" 'start_addons')
 
     # 2 + 3: shut things down.
     while IFS= read -r slug; do
@@ -375,9 +411,9 @@ run_maintenance_window() {
         if stop_addon_if_running "${slug}"; then
             addons_to_restart+=("${slug}")
         fi
-    done < <(bashio::config 'stop_addons')
+    done < <(config_list_with_fallback "windows[${window_index}].stop_addons" 'stop_addons')
 
-    if should_stop_core_for_window "${duration_minutes}"; then
+    if should_stop_core_for_window "${duration_minutes}" "${window_index}"; then
         core_will_stop="true"
     fi
 
@@ -465,7 +501,7 @@ window_count() {
 
 # -----------------------------------------------------------------------------
 # Find the next configured maintenance window.
-# Output fields: wait_seconds, duration_minutes, name, formatted_start.
+# Output fields: wait_seconds, duration_minutes, name, formatted_start, window_index.
 # -----------------------------------------------------------------------------
 next_window() {
     local now_epoch
@@ -483,6 +519,7 @@ next_window() {
     local best_duration_minutes=""
     local best_name=""
     local best_start=""
+    local best_window_index=""
 
     now_epoch="$(date +%s)"
     count="$(window_count)"
@@ -520,6 +557,7 @@ next_window() {
                 best_duration_minutes="${duration_minutes}"
                 best_name="${name}"
                 best_start="$(date -d "@${candidate_epoch}" '+%Y-%m-%d %H:%M:%S %Z')"
+                best_window_index="${window_index}"
             fi
         done
     done
@@ -528,11 +566,12 @@ next_window() {
         return 1
     fi
 
-    printf '%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\n' \
         "$(( best_epoch - now_epoch ))" \
         "${best_duration_minutes}" \
         "${best_name}" \
-        "${best_start}"
+        "${best_start}" \
+        "${best_window_index}"
 }
 
 # -----------------------------------------------------------------------------
@@ -556,6 +595,7 @@ main() {
         local duration_minutes
         local window_name
         local starts_at
+        local window_index
 
         if ! next_window_details="$(next_window)"; then
             bashio::log.warning "No future maintenance windows are configured; checking again in ${NO_WINDOW_SLEEP_SECONDS}s."
@@ -563,11 +603,11 @@ main() {
             continue
         fi
 
-        IFS=$'\t' read -r wait_seconds duration_minutes window_name starts_at <<< "${next_window_details}"
+        IFS=$'\t' read -r wait_seconds duration_minutes window_name starts_at window_index <<< "${next_window_details}"
 
         bashio::log.info "Next maintenance window: ${window_name} at ${starts_at} for ${duration_minutes} min."
         sleep "${wait_seconds}"
 
-        run_maintenance_window "${duration_minutes}" "${window_name}"
+        run_maintenance_window "${duration_minutes}" "${window_name}" "${window_index}"
     done
 }
