@@ -4,17 +4,17 @@ A Home Assistant add-on repository containing the **Maintenance Window** add-on.
 
 ## What it does
 
-Maintenance Window provides a scheduled "quiet mode" for your Home Assistant
-installation. At a configured time it gracefully **stops Home Assistant Core**
-(and, optionally, a selected list of other add-ons), holds them down for a short
-maintenance window, and then **restarts everything automatically** when the
-window ends.
+Maintenance Window provides scheduled Home Assistant maintenance windows. At a
+configured time it can gracefully **stop Home Assistant Core** and selected
+add-ons, temporarily **start selected add-ons**, hold that state for a short
+window, and then automatically restore everything when the window ends.
 
 Typical use cases:
 
 - Give the host a quiet period for backups, host updates, or database maintenance.
 - Reduce automation noise / device polling during the night.
 - Force a clean, scheduled restart of Core on a regular cadence.
+- Temporarily open an add-on such as SSH for a short break-glass access window.
 
 ## Add-ons in this repository
 
