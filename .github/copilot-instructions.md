@@ -88,19 +88,20 @@ Reference docs:
 
 ## Current implementation status
 
-- ✅ Stop/start helpers for Core and add-ons, with `dry_run` and `restart_core`
-  guards (`scheduler.sh`).
+- ✅ Real day/time scheduling for configured `windows` entries.
+- ✅ Stop/start helpers for Core and add-ons, with `dry_run`, explicit Core-stop
+  arming, startup grace, and max-duration guards (`scheduler.sh`).
+- ✅ Temporary `start_addons` windows for add-ons such as SSH.
 - ✅ s6 service wiring and standalone `run.sh`.
-- ⛔ **Scheduling is a placeholder.** `seconds_until_next_window()` returns a
-  fixed interval and the `run_maintenance_window` call in `main` is commented
-  out so it does not fire. Implementing real time/day matching is the main
-  remaining task.
 
-When implementing the scheduler:
-1. Iterate `windows` from config; parse `start_time` (`HH:MM`) and `days`.
-2. Compute the soonest future occurrence in the **host timezone**.
-3. Sleep until then, run the window for `duration_minutes`, then loop.
-4. Respect `dry_run` (log only) and `restart_core` (skip Core).
+When changing the scheduler:
+1. Preserve the Core-stop safety model: `restart_core: true` is not enough;
+   `core_stop_confirmation: STOP_CORE`, startup grace, max duration, and
+   recovery-state write success must also pass.
+2. Keep `dry_run: true` authoritative: no mutating Supervisor API calls.
+3. Compute the soonest future occurrence from `windows` in the container/host
+   timezone and run exactly that window duration.
+4. Continue to skip this add-on if it appears in any configured add-on list.
 
 ## Safety rules — do not violate
 
@@ -131,7 +132,6 @@ There is no compiler. Validate changes by:
    (adds `homeassistant_api: true`).
 4. **Manual / abort controls** — on-demand trigger and abort of an in-progress
    window (MQTT discovery switch, HA switch, or ingress web UI).
-5. **Safety guards** — skip if a backup is running, max-duration cap, minimum
-   HA Core version pin.
+5. **Safety guards** — skip if a backup is running, minimum HA Core version pin.
 6. **Architectures & timezone** — keep all 5 archs; follow host timezone via
    Supervisor info.
