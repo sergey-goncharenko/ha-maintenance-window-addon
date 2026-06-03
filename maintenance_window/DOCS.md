@@ -93,7 +93,7 @@ ha addons --raw-json | jq '.data.addons[] | {name, slug}'
 
 ## Status
 
-This is an early scaffold. The scheduling logic in
-`rootfs/usr/lib/maintenance-window/scheduler.sh` is a documented placeholder —
-the Supervisor API calls and safety guards are implemented, but the time/day
-matching is marked `TODO`.
+This is an early prototype. The add-on calculates the next configured
+`start_time`/`days` occurrence, sleeps until then, runs the maintenance window,
+and repeats. Start with `dry_run: true` and a short test window before allowing
+it to stop Home Assistant Core.

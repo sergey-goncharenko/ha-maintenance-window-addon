@@ -3,6 +3,13 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.2.0
+
+- Implement real day/time scheduling for configured maintenance windows.
+- Skip the Maintenance Window add-on if it is accidentally listed in
+  `stop_addons`.
+- Restart only add-ons that were running when the window began.
+
 ## 0.1.1
 
 - Update repository metadata to point to the public GitHub repository.
