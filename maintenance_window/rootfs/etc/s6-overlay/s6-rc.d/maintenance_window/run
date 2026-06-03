@@ -1,0 +1,16 @@
+#!/command/with-contenv bashio
+# ==============================================================================
+# Maintenance Window — s6 service "run" script
+#
+# s6-overlay (v3) starts this long-running service. It delegates the actual
+# scheduling loop to the shared library so the same code path can be reused by
+# the standalone run.sh entrypoint.
+# ==============================================================================
+# shellcheck shell=bash
+
+bashio::log.info "Starting Maintenance Window service..."
+
+# shellcheck source=maintenance_window/rootfs/usr/lib/maintenance-window/scheduler.sh
+source /usr/lib/maintenance-window/scheduler.sh
+
+exec main

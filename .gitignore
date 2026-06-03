@@ -1,0 +1,11 @@
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/*
+!.vscode/extensions.json
+
+# Local build artifacts
+*.tar
+*.tar.gz
+.build/

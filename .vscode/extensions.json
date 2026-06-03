@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "timonwong.shellcheck",
+    "redhat.vscode-yaml",
+    "ms-azuretools.vscode-docker"
+  ]
+}

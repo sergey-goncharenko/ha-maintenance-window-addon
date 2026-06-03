@@ -1,0 +1,41 @@
+configuration:
+  log_level:
+    name: Log level
+    description: >-
+      Controls how much detail the add-on writes to its log. Use debug or trace
+      while testing your schedule, info for normal operation.
+  dry_run:
+    name: Dry run
+    description: >-
+      When enabled, the add-on only logs what it would do and never actually
+      stops or starts Home Assistant Core or any add-on. Great for validating a
+      schedule safely.
+  restart_core:
+    name: Stop & restart Home Assistant Core
+    description: >-
+      When enabled, Home Assistant Core is stopped at the start of the window and
+      started again at the end. Disable to only cycle the selected add-ons.
+  stop_addons:
+    name: Add-ons to stop
+    description: >-
+      List of add-on slugs to stop during the maintenance window (e.g.
+      core_mosquitto). They are started again when the window ends. Leave empty
+      to only affect Core.
+  windows:
+    name: Maintenance windows
+    description: >-
+      One or more scheduled windows describing when Core/add-ons should be
+      stopped and for how long.
+    fields:
+      name:
+        name: Window name
+        description: A friendly label shown in the add-on log.
+      start_time:
+        name: Start time
+        description: 24-hour local time (HH:MM) when the window begins.
+      duration_minutes:
+        name: Duration (minutes)
+        description: How long Core and the selected add-ons stay stopped (1-1440).
+      days:
+        name: Days
+        description: Days of the week this window runs (mon through sun).

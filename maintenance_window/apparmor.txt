@@ -1,0 +1,28 @@
+#include <tunables/global>
+
+profile maintenance_window flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Capabilities
+  file,
+  signal (send) set=(kill,term,int,hup,cont),
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /command/** ix,
+  /package/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /etc/s6-overlay/** ix,
+  run/{,**} rwk,
+  dev/tty rw,
+
+  # Add-on data
+  /data/** rw,
+
+  # Bashio + add-on scripts
+  /usr/lib/bashio/** r,
+  /usr/lib/maintenance-window/** r,
+  /usr/bin/maintenance-window-run.sh r,
+}

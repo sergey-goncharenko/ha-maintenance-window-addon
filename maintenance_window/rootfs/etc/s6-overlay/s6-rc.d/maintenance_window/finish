@@ -1,0 +1,19 @@
+#!/command/with-contenv bashio
+# ==============================================================================
+# Maintenance Window — s6 service "finish" script
+#
+# Runs when the service exits. $1 is the exit code of the run script, $2 is the
+# signal number (if killed). We log the reason and ask s6 to bring the whole
+# container down so the Supervisor can report the add-on as stopped rather than
+# silently looping a crashed service.
+# ==============================================================================
+# shellcheck shell=bash
+
+declare exit_code="${1}"
+
+if [[ "${exit_code}" -ne 0 ]] && [[ "${exit_code}" -ne 256 ]]; then
+    bashio::log.warning "Maintenance Window service exited with code ${exit_code}"
+fi
+
+# Tell s6-overlay to halt the container.
+exec /run/s6/basedir/bin/halt
