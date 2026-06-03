@@ -13,4 +13,4 @@ bashio::log.info "Starting Maintenance Window service..."
 # shellcheck source=maintenance_window/rootfs/usr/lib/maintenance-window/scheduler.sh
 source /usr/lib/maintenance-window/scheduler.sh
 
-exec main
+main

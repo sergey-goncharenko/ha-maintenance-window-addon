@@ -3,6 +3,11 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.2
+
+- Fix the s6 service runner so it calls the sourced `main` function instead of
+  trying to execute it as an external command.
+
 ## 0.6.1
 
 - Fix per-window action schema optional markers so Home Assistant can save

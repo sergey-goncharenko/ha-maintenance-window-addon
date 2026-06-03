@@ -172,6 +172,16 @@ def validate_line_endings() -> None:
             fail(f"{path.relative_to(ROOT)} contains CRLF line endings")
 
 
+def validate_s6_runner() -> None:
+    run_script = ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "run"
+    text = run_script.read_text(encoding="utf-8")
+
+    if "exec main" in text:
+        fail("s6 run script must call the sourced main function, not 'exec main'")
+    if not re.search(r"^main$", text, re.MULTILINE):
+        fail("s6 run script must call main after sourcing scheduler.sh")
+
+
 def main() -> None:
     config = load_config()
     require_keys(config)
@@ -180,6 +190,7 @@ def main() -> None:
     validate_safety_defaults(config)
     validate_apparmor(config)
     validate_line_endings()
+    validate_s6_runner()
     print("Add-on metadata validation passed.")
 
 
