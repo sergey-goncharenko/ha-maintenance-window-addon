@@ -1,0 +1,5 @@
+# Keep container entrypoints and rootfs service files Unix-friendly on Windows.
+*.sh text eol=lf
+maintenance_window/rootfs/** text eol=lf
+maintenance_window/Dockerfile text eol=lf
+maintenance_window/apparmor.txt text eol=lf
