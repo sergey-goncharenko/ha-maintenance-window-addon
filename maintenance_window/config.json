@@ -1,6 +1,6 @@
 {
   "name": "Maintenance Window",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "slug": "maintenance_window",
   "description": "Scheduled quiet mode: stop Home Assistant Core (and optionally selected add-ons) for a short maintenance window, then restart automatically.",
   "url": "https://github.com/sergey-goncharenko/ha-maintenance-window-addon/tree/main/maintenance_window",
@@ -25,6 +25,7 @@
     "dry_run": false,
     "restart_core": true,
     "stop_addons": [],
+    "start_addons": [],
     "windows": [
       {
         "name": "Nightly maintenance",
@@ -47,6 +48,9 @@
     "dry_run": "bool",
     "restart_core": "bool",
     "stop_addons": [
+      "str"
+    ],
+    "start_addons": [
       "str"
     ],
     "windows": [

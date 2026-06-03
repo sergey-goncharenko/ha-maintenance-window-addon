@@ -10,11 +10,12 @@ automatically.
 The add-on runs as a long-running service (independent of Home Assistant Core,
 so it can start Core back up). On a schedule you define, it:
 
-1. Stops the add-ons listed in `stop_addons`.
-2. Stops Home Assistant Core (if `restart_core` is enabled).
-3. Waits for the window `duration_minutes`.
-4. Starts Home Assistant Core again.
-5. Starts the previously stopped add-ons again.
+1. Starts any add-ons listed in `start_addons` that are not already running.
+2. Stops the add-ons listed in `stop_addons`.
+3. Stops Home Assistant Core (if `restart_core` is enabled).
+4. Waits for the window `duration_minutes`.
+5. Starts Home Assistant Core and previously stopped add-ons again.
+6. Stops add-ons it temporarily started, leaving already-running add-ons alone.
 
 It talks to the [Supervisor API](https://developers.home-assistant.io/docs/api/supervisor/endpoints)
 using the add-on's `SUPERVISOR_TOKEN`. This requires `hassio_api: true` and
@@ -36,6 +37,7 @@ restart_core: true
 stop_addons:
   - core_mosquitto
   - a0d7b954_nodered
+start_addons: []
 windows:
   - name: Nightly maintenance
     start_time: "03:00"
@@ -70,6 +72,37 @@ afterward. Set to `false` if you only want to cycle add-ons.
 A list of add-on **slugs** to stop during the window. Find an add-on's slug in
 its page URL or via the Supervisor `GET /addons` endpoint. Leave empty to only
 affect Core.
+
+### Option: `start_addons`
+
+A list of add-on **slugs** to start temporarily during the window. The add-on
+checks each listed add-on first: if it was already running, it is left running
+after the window; if Maintenance Window started it, Maintenance Window stops it
+again when the window ends.
+
+Example: temporarily open the official SSH add-on for 30 minutes after 01:00,
+without restarting Home Assistant Core:
+
+```yaml
+log_level: info
+dry_run: false
+restart_core: false
+stop_addons: []
+start_addons:
+  - core_ssh
+windows:
+  - name: Temporary SSH access
+    start_time: "01:00"
+    duration_minutes: 30
+    days:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+      - sat
+      - sun
+```
 
 ### Option: `windows`
 

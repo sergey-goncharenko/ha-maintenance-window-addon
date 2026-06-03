@@ -21,6 +21,12 @@ configuration:
       List of add-on slugs to stop during the maintenance window (e.g.
       core_mosquitto). They are started again when the window ends. Leave empty
       to only affect Core.
+  start_addons:
+    name: Add-ons to start temporarily
+    description: >-
+      List of add-on slugs to start at the beginning of the maintenance window.
+      Add-ons that were already running are left running; add-ons started by this
+      scheduler are stopped again when the window ends.
   windows:
     name: Maintenance windows
     description: >-
