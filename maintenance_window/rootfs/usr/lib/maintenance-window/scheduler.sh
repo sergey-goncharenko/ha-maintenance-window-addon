@@ -28,6 +28,7 @@ readonly SUPERVISOR_API="http://supervisor"
 readonly ADDON_SLUG="maintenance_window"
 readonly NO_WINDOW_SLEEP_SECONDS="300"
 readonly WINDOW_STATE_FILE="/data/maintenance-window-state.json"
+readonly STARTED_AT_EPOCH="$(date +%s)"
 
 # -----------------------------------------------------------------------------
 # Return true when the configured add-on slug points at this add-on.
@@ -77,6 +78,61 @@ json_array() {
     fi
 
     printf '%s\n' "$@" | jq --raw-input . | jq --slurp .
+}
+
+# -----------------------------------------------------------------------------
+# Read an integer config value, falling back to a safe default if malformed.
+# -----------------------------------------------------------------------------
+config_int() {
+    local key="${1}"
+    local default_value="${2}"
+    local value
+
+    value="$(bashio::config "${key}" "${default_value}")"
+    if [[ "${value}" =~ ^[0-9]+$ ]]; then
+        echo "${value}"
+        return 0
+    fi
+
+    bashio::log.warning "Config value '${key}' is not a valid integer: ${value}; using ${default_value}." >&2
+    echo "${default_value}"
+}
+
+# -----------------------------------------------------------------------------
+# Return true when stopping Core is deliberately armed and safe for this window.
+# -----------------------------------------------------------------------------
+should_stop_core_for_window() {
+    local duration_minutes="${1}"
+    local confirmation
+    local startup_grace_seconds
+    local max_core_stop_minutes
+    local uptime_seconds
+
+    if ! bashio::config.true 'restart_core'; then
+        bashio::log.info "restart_core is disabled; leaving Core running."
+        return 1
+    fi
+
+    confirmation="$(bashio::config 'core_stop_confirmation' '')"
+    if [[ "${confirmation}" != "STOP_CORE" ]]; then
+        bashio::log.warning "Core stop is not armed. Set core_stop_confirmation to STOP_CORE to allow stopping Home Assistant Core."
+        return 1
+    fi
+
+    startup_grace_seconds="$(config_int 'startup_grace_seconds' 300)"
+    uptime_seconds="$(( $(date +%s) - STARTED_AT_EPOCH ))"
+    if (( uptime_seconds < startup_grace_seconds )); then
+        bashio::log.warning "Core stop blocked by startup grace period (${uptime_seconds}/${startup_grace_seconds}s since add-on start)."
+        return 1
+    fi
+
+    max_core_stop_minutes="$(config_int 'max_core_stop_minutes' 60)"
+    if (( duration_minutes > max_core_stop_minutes )); then
+        bashio::log.warning "Core stop blocked because window duration (${duration_minutes} min) exceeds max_core_stop_minutes (${max_core_stop_minutes} min)."
+        return 1
+    fi
+
+    return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -188,13 +244,6 @@ start_addon_if_stopped() {
 # Stop Home Assistant Core.
 # -----------------------------------------------------------------------------
 stop_core() {
-    local force="${1:-false}"
-
-    if [[ "${force}" != "true" ]] && ! bashio::config.true 'restart_core'; then
-        bashio::log.info "restart_core is disabled; leaving Core running."
-        return 0
-    fi
-
     if bashio::config.true 'dry_run'; then
         bashio::log.notice "[dry_run] Would stop Home Assistant Core"
         return 0
@@ -233,22 +282,21 @@ start_core() {
 write_window_state() {
     local addons_to_restart_json="${1}"
     local temporary_addons_to_stop_json="${2}"
-    local restart_core_json="false"
+    local restart_core_json="${3}"
 
     if bashio::config.true 'dry_run'; then
         return 0
     fi
 
-    if bashio::config.true 'restart_core'; then
-        restart_core_json="true"
-    fi
-
-    jq --null-input \
+    if ! jq --null-input \
         --argjson restart_core "${restart_core_json}" \
         --argjson addons_to_restart "${addons_to_restart_json}" \
         --argjson temporary_addons_to_stop "${temporary_addons_to_stop_json}" \
         '{restart_core: $restart_core, addons_to_restart: $addons_to_restart, temporary_addons_to_stop: $temporary_addons_to_stop}' \
-        > "${WINDOW_STATE_FILE}"
+        > "${WINDOW_STATE_FILE}"; then
+        bashio::log.error "Failed to write active-window recovery state; refusing to stop Home Assistant Core."
+        return 1
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -308,6 +356,7 @@ run_maintenance_window() {
     local slug
     local -a addons_to_restart=()
     local -a temporary_addons_to_stop=()
+    local core_will_stop="false"
 
     bashio::log.notice "=== Entering maintenance window: ${name} (${duration_minutes} min) ==="
 
@@ -327,20 +376,31 @@ run_maintenance_window() {
         fi
     done < <(bashio::config 'stop_addons')
 
-    if ! bashio::config.true 'dry_run'; then
-        write_window_state \
-            "$(json_array "${addons_to_restart[@]}")" \
-            "$(json_array "${temporary_addons_to_stop[@]}")"
+    if should_stop_core_for_window "${duration_minutes}"; then
+        core_will_stop="true"
     fi
 
-    stop_core
+    if ! bashio::config.true 'dry_run'; then
+        if ! write_window_state \
+            "$(json_array "${addons_to_restart[@]}")" \
+            "$(json_array "${temporary_addons_to_stop[@]}")" \
+            "${core_will_stop}"; then
+            core_will_stop="false"
+        fi
+    fi
+
+    if [[ "${core_will_stop}" == "true" ]]; then
+        stop_core
+    fi
 
     # 4: hold the window open.
     sleep "$(( duration_minutes * 60 ))"
 
     # 5: bring things back using the same path as crash/watchdog recovery.
     if bashio::config.true 'dry_run'; then
-        start_core
+        if [[ "${core_will_stop}" == "true" ]]; then
+            start_core true
+        fi
         for slug in "${addons_to_restart[@]}"; do
             start_addon "${slug}"
         done

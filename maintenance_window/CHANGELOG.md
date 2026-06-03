@@ -3,6 +3,15 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.0
+
+- Make the default configuration non-mutating with `dry_run: true` and
+  `restart_core: false`.
+- Require `core_stop_confirmation: STOP_CORE` before Home Assistant Core may be
+  stopped.
+- Add `startup_grace_seconds` and `max_core_stop_minutes` safeguards to prevent
+  immediate or excessively long Core stop windows.
+
 ## 0.3.0
 
 - Add `start_addons` for temporarily starting add-ons during a maintenance

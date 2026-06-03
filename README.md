@@ -31,6 +31,14 @@ Typical use cases:
 
 See the add-on's [documentation](./maintenance_window/DOCS.md) for configuration.
 
+## Safety defaults
+
+The default configuration is non-mutating: `dry_run` is enabled and Core restarts
+are disabled. To allow Home Assistant Core to be stopped, you must explicitly set
+`restart_core: true` and `core_stop_confirmation: STOP_CORE`. The add-on also
+blocks Core stops during a startup grace period and blocks windows longer than
+the configured maximum Core stop duration.
+
 > ⚠️ This add-on can stop Home Assistant Core. While Core is stopped, automations,
 > the UI, and integrations are unavailable. The add-on itself runs independently
 > of Core and is responsible for starting Core again at the end of the window.

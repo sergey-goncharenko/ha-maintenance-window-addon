@@ -32,8 +32,11 @@ Example add-on options:
 
 ```yaml
 log_level: info
-dry_run: false
-restart_core: true
+dry_run: true
+restart_core: false
+core_stop_confirmation: ""
+startup_grace_seconds: 300
+max_core_stop_minutes: 60
 stop_addons:
   - core_mosquitto
   - a0d7b954_nodered
@@ -67,6 +70,29 @@ starts anything. Use this to validate your schedule safely before going live.
 When `true`, Home Assistant Core is stopped during the window and restarted
 afterward. Set to `false` if you only want to cycle add-ons.
 
+For safety, this option is not enough on its own. Core is only stopped when
+`restart_core` is `true`, `core_stop_confirmation` is set exactly to
+`STOP_CORE`, the add-on has been running longer than `startup_grace_seconds`,
+and the window duration is no greater than `max_core_stop_minutes`.
+
+### Option: `core_stop_confirmation`
+
+Extra arming value required before the add-on may stop Home Assistant Core. Set
+it exactly to `STOP_CORE` only after you have validated the schedule in
+`dry_run` mode. Leave it empty to guarantee Core will not be stopped.
+
+### Option: `startup_grace_seconds`
+
+Number of seconds after the add-on starts during which Core stops are blocked.
+The default is `300` seconds. This protects against a bad schedule firing
+immediately after installing, booting, or watchdog-restarting the add-on.
+
+### Option: `max_core_stop_minutes`
+
+Maximum maintenance window duration allowed to stop Core. The default is `60`
+minutes. If a window is longer than this, the add-on can still start/stop other
+add-ons, but Core is left running.
+
 ### Option: `stop_addons`
 
 A list of add-on **slugs** to stop during the window. Find an add-on's slug in
@@ -87,6 +113,9 @@ without restarting Home Assistant Core:
 log_level: info
 dry_run: false
 restart_core: false
+core_stop_confirmation: ""
+startup_grace_seconds: 300
+max_core_stop_minutes: 60
 stop_addons: []
 start_addons:
   - core_ssh

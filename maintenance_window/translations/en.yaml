@@ -15,6 +15,23 @@ configuration:
     description: >-
       When enabled, Home Assistant Core is stopped at the start of the window and
       started again at the end. Disable to only cycle the selected add-ons.
+  core_stop_confirmation:
+    name: Core stop confirmation
+    description: >-
+      Extra arming value required before Home Assistant Core may be stopped. Set
+      exactly to STOP_CORE after testing with dry run. Leave empty to prevent
+      Core from being stopped even if Stop & restart Home Assistant Core is on.
+  startup_grace_seconds:
+    name: Startup grace period
+    description: >-
+      Number of seconds after this add-on starts during which Home Assistant Core
+      may not be stopped. This helps prevent lockout from an accidental schedule
+      immediately after boot or add-on restart.
+  max_core_stop_minutes:
+    name: Maximum Core stop duration
+    description: >-
+      Maximum maintenance window duration that is allowed to stop Home Assistant
+      Core. Longer windows can still start/stop add-ons, but Core stays running.
   stop_addons:
     name: Add-ons to stop
     description: >-
