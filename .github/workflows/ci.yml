@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    name: Validate add-on
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate add-on metadata
+        run: python scripts/validate_addon.py
+
+      - name: Check Bash syntax
+        run: |
+          bash -n maintenance_window/rootfs/usr/lib/maintenance-window/scheduler.sh
+          bash -n maintenance_window/run.sh
+          bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/run
+          bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          shellcheck -e SC1091,SC2154 \
+            maintenance_window/rootfs/usr/lib/maintenance-window/scheduler.sh \
+            maintenance_window/run.sh \
+            maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/run \
+            maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish
+
+      - name: Build add-on image
+        run: |
+          docker build \
+            --build-arg BUILD_ARCH=amd64 \
+            --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --build-arg BUILD_DESCRIPTION="Maintenance Window" \
+            --build-arg BUILD_NAME="Maintenance Window" \
+            --build-arg BUILD_REF="${GITHUB_SHA}" \
+            --build-arg BUILD_REPOSITORY="${GITHUB_REPOSITORY}" \
+            --build-arg BUILD_VERSION="$(python -c 'import json; print(json.load(open("maintenance_window/config.json"))["version"])')" \
+            --tag maintenance-window-addon:test \
+            maintenance_window

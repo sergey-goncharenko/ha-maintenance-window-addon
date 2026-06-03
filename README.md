@@ -1,5 +1,7 @@
 # Maintenance Window HA Add-on Repository
 
+[![CI](https://github.com/sergey-goncharenko/ha-maintenance-window-addon/actions/workflows/ci.yml/badge.svg)](https://github.com/sergey-goncharenko/ha-maintenance-window-addon/actions/workflows/ci.yml)
+
 A Home Assistant add-on repository containing the **Maintenance Window** add-on.
 
 ## What it does
