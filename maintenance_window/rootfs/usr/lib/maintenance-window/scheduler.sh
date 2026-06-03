@@ -28,7 +28,8 @@ readonly SUPERVISOR_API="http://supervisor"
 readonly ADDON_SLUG="maintenance_window"
 readonly NO_WINDOW_SLEEP_SECONDS="300"
 readonly WINDOW_STATE_FILE="/data/maintenance-window-state.json"
-readonly STARTED_AT_EPOCH="$(date +%s)"
+STARTED_AT_EPOCH="$(date +%s)"
+readonly STARTED_AT_EPOCH
 
 # -----------------------------------------------------------------------------
 # Return true when the configured add-on slug points at this add-on.
