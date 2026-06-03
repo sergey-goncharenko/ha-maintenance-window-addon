@@ -21,6 +21,11 @@ It talks to the [Supervisor API](https://developers.home-assistant.io/docs/api/s
 using the add-on's `SUPERVISOR_TOKEN`. This requires `hassio_api: true` and
 `hassio_role: manager` (already set in the add-on configuration).
 
+This early prototype currently disables its custom AppArmor profile to avoid an
+installation-time profile loading issue on HAOS. It still runs as a normal
+Supervisor-managed add-on container and keeps the safe default configuration
+described below.
+
 > ⚠️ **Important:** While Core is stopped, your automations, dashboards, and
 > integrations are unavailable. Choose a window time when this is acceptable
 > (e.g. the middle of the night). The add-on is what brings Core back, so do not

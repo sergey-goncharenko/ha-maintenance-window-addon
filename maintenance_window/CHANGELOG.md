@@ -3,6 +3,10 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.2
+
+- Disable the custom AppArmor profile for now to unblock installation on HAOS.
+
 ## 0.4.1
 
 - Fix the AppArmor profile so Supervisor can load it during installation.
@@ -42,4 +46,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Shared scheduler library with Supervisor API helpers to stop/start Core and
   add-ons (`dry_run` and `restart_core` guards in place).
 - Placeholder scheduling loop (time/day matching marked `TODO`).
-- AppArmor profile, documentation, and English translations.
+- Documentation and English translations.

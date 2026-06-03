@@ -27,7 +27,6 @@ maintenance-window-addon/
    ├─ build.yaml               # per-arch base images
    ├─ Dockerfile               # Alpine HA base; installs bash/jq/curl; copies rootfs/
    ├─ run.sh                   # standalone entrypoint (sources scheduler.sh)
-   ├─ apparmor.txt             # AppArmor profile
    ├─ DOCS.md                  # user-facing docs
    ├─ CHANGELOG.md
    ├─ ASSETS.md                # reminder: icon.png / logo.png are still TODO
