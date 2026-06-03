@@ -148,6 +148,9 @@ def validate_line_endings() -> None:
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "run",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "finish",
     ]
+    apparmor_file = ADDON / "apparmor.txt"
+    if apparmor_file.exists():
+        checked_paths.append(apparmor_file)
 
     for path in checked_paths:
         data = path.read_bytes()

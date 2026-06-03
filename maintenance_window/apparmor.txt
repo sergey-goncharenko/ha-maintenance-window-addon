@@ -1,0 +1,34 @@
+#include <tunables/global>
+
+profile maintenance_window flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  file,
+  signal,
+
+  # Supervisor API access through http://supervisor.
+  network inet stream,
+  network inet6 stream,
+
+  # s6-overlay v3 and base image commands.
+  /init rix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /command/** ix,
+  /package/** ix,
+  /etc/s6-overlay/** rix,
+  /run/s6/** rwix,
+  /run/s6-rc*/** rwix,
+  /run/service/** rwix,
+  /run/** rwk,
+
+  # Bashio and add-on scripts.
+  /usr/lib/bashio/** ix,
+  /usr/lib/maintenance-window/** r,
+  /usr/bin/maintenance-window-run.sh ix,
+
+  # Add-on state and temporary files.
+  /data/** rwk,
+  /tmp/** rwk,
+}

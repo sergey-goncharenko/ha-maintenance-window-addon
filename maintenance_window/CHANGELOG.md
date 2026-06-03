@@ -3,6 +3,11 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.3
+
+- Re-enable AppArmor with a minimal profile based on current Home Assistant
+  add-on profile patterns to avoid the stale-profile unload path.
+
 ## 0.4.2
 
 - Disable the custom AppArmor profile for now to unblock installation on HAOS.

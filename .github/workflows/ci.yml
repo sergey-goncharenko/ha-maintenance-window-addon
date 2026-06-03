@@ -28,10 +28,10 @@ jobs:
           bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/run
           bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish
 
-      - name: Install ShellCheck
+      - name: Install validation tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
+          sudo apt-get install -y apparmor shellcheck
 
       - name: Run ShellCheck
         run: |
@@ -40,6 +40,12 @@ jobs:
             maintenance_window/run.sh \
             maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/run \
             maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish
+
+      - name: Validate AppArmor profile
+        run: |
+          if [ -f maintenance_window/apparmor.txt ]; then
+            apparmor_parser --preprocess maintenance_window/apparmor.txt >/dev/null
+          fi
 
       - name: Build add-on image
         run: |
