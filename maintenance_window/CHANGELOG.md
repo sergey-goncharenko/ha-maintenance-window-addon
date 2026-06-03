@@ -3,6 +3,13 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.0
+
+- Publish and use a prebuilt GHCR image so HAOS does not need to build the add-on
+  locally during installation.
+- Remove deprecated architectures and keep support to `aarch64` and `amd64`.
+- Remove deprecated `build.yaml` metadata.
+
 ## 0.4.3
 
 - Re-enable AppArmor with a minimal profile based on current Home Assistant

@@ -24,8 +24,7 @@ maintenance-window-addon/
 ├─ .github/copilot-instructions.md
 └─ maintenance_window/         # THE add-on (slug: maintenance_window)
    ├─ config.json              # add-on manifest: arch, options, schema, API perms
-   ├─ build.yaml               # per-arch base images
-   ├─ Dockerfile               # Alpine HA base; installs bash/jq/curl; copies rootfs/
+  ├─ Dockerfile               # HA base; installs bash/jq/curl; copies rootfs/
    ├─ run.sh                   # standalone entrypoint (sources scheduler.sh)
   ├─ apparmor.txt             # minimal custom AppArmor profile
    ├─ DOCS.md                  # user-facing docs
@@ -92,6 +91,7 @@ Reference docs:
 - ✅ Stop/start helpers for Core and add-ons, with `dry_run`, explicit Core-stop
   arming, startup grace, and max-duration guards (`scheduler.sh`).
 - ✅ Temporary `start_addons` windows for add-ons such as SSH.
+- ✅ Prebuilt GHCR image for `aarch64` and `amd64`; no `build.yaml`.
 - ✅ s6 service wiring and standalone `run.sh`.
 
 When changing the scheduler:

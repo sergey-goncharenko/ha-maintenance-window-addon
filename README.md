@@ -33,6 +33,9 @@ Typical use cases:
 
 See the add-on's [documentation](./maintenance_window/DOCS.md) for configuration.
 
+The add-on uses a prebuilt multi-architecture image published to GHCR, so HAOS
+should pull the image during installation instead of building it locally.
+
 ## Safety defaults
 
 The default configuration is non-mutating: `dry_run` is enabled and Core restarts

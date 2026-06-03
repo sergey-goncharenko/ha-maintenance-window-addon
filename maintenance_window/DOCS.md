@@ -25,6 +25,9 @@ This early prototype includes a minimal custom AppArmor profile. The profile is
 kept intentionally small and exists partly so Supervisor can update/replace any
 stale profile left by earlier failed prototype installs.
 
+The add-on image is published to GHCR for `aarch64` and `amd64`, so normal
+installation should pull a prebuilt image instead of building on the HAOS device.
+
 > ⚠️ **Important:** While Core is stopped, your automations, dashboards, and
 > integrations are unavailable. Choose a window time when this is acceptable
 > (e.g. the middle of the night). The add-on is what brings Core back, so do not

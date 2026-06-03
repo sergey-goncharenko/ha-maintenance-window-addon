@@ -89,6 +89,20 @@ def require_keys(config: dict) -> None:
         fail(f"config.json is missing required keys: {', '.join(missing)}")
 
 
+def validate_image_metadata(config: dict) -> None:
+    expected_arches = {"aarch64", "amd64"}
+    actual_arches = set(config.get("arch", []))
+    if actual_arches != expected_arches:
+        fail(f"arch must be exactly {sorted(expected_arches)}, got {sorted(actual_arches)}")
+
+    expected_image = "ghcr.io/sergey-goncharenko/maintenance-window-addon"
+    if config.get("image") != expected_image:
+        fail(f"image must be {expected_image!r}, got {config.get('image')!r}")
+
+    if (ADDON / "build.yaml").exists():
+        fail("maintenance_window/build.yaml is deprecated and should not exist")
+
+
 def validate_options_schema(config: dict) -> None:
     option_keys = set(config["options"])
     schema_keys = set(config["schema"])
@@ -161,6 +175,7 @@ def validate_line_endings() -> None:
 def main() -> None:
     config = load_config()
     require_keys(config)
+    validate_image_metadata(config)
     validate_options_schema(config)
     validate_safety_defaults(config)
     validate_apparmor(config)

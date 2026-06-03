@@ -1,0 +1,60 @@
+name: Publish Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - maintenance_window/**
+      - .github/workflows/publish-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Publish add-on image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read add-on version
+        id: version
+        run: |
+          version="$(python -c 'import json; print(json.load(open("maintenance_window/config.json"))["version"])')"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: maintenance_window
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            BUILD_ARCH=multi
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            BUILD_DESCRIPTION=Maintenance Window
+            BUILD_NAME=Maintenance Window
+            BUILD_REF=${{ github.sha }}
+            BUILD_REPOSITORY=${{ github.repository }}
+            BUILD_VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            ghcr.io/sergey-goncharenko/maintenance-window-addon:${{ steps.version.outputs.version }}
+            ghcr.io/sergey-goncharenko/maintenance-window-addon:latest
