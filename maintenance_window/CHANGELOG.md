@@ -3,6 +3,11 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.1
+
+- Fix per-window action schema optional markers so Home Assistant can save
+  windows that omit `restart_core`, `stop_addons`, or `start_addons`.
+
 ## 0.6.0
 
 - Add per-window `restart_core`, `stop_addons`, and `start_addons` overrides.

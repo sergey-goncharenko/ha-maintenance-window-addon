@@ -120,7 +120,7 @@ def validate_options_schema(config: dict) -> None:
         fail(f"options without English translations: {', '.join(missing_translations)}")
 
     window_schema = config["schema"].get("windows", [{}])[0]
-    window_fields = {field.removesuffix("?") for field in window_schema}
+    window_fields = set(window_schema)
     translated_window_fields = translation_field_keys("windows")
     missing_window_translations = sorted(window_fields - translated_window_fields)
     if missing_window_translations:
