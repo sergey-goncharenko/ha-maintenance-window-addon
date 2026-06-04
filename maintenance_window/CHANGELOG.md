@@ -3,6 +3,11 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.1
+
+- Refresh generated artwork with yellow/black maintenance tape and traffic cone
+  visual cues.
+
 ## 0.7.0
 
 - Add generated `icon.png` and `logo.png` artwork.
