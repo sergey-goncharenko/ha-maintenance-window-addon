@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import struct
 import sys
 from pathlib import Path
 
@@ -182,6 +183,30 @@ def validate_s6_runner() -> None:
         fail("s6 run script must call main after sourcing scheduler.sh")
 
 
+def png_dimensions(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()[:24]
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        fail(f"{path.relative_to(ROOT)} is not a PNG file")
+    return struct.unpack(">II", data[16:24])
+
+
+def validate_artwork() -> None:
+    expected = {
+        ADDON / "icon.png": (128, 128),
+        ADDON / "logo.png": (250, 100),
+    }
+
+    for path, dimensions in expected.items():
+        if not path.exists():
+            fail(f"missing add-on artwork: {path.relative_to(ROOT)}")
+        actual = png_dimensions(path)
+        if actual != dimensions:
+            fail(
+                f"{path.relative_to(ROOT)} must be {dimensions[0]}x{dimensions[1]}, "
+                f"got {actual[0]}x{actual[1]}"
+            )
+
+
 def main() -> None:
     config = load_config()
     require_keys(config)
@@ -191,6 +216,7 @@ def main() -> None:
     validate_apparmor(config)
     validate_line_endings()
     validate_s6_runner()
+    validate_artwork()
     print("Add-on metadata validation passed.")
 
 

@@ -1,9 +1,13 @@
 # Maintenance Window
 
-Scheduled "quiet mode" for Home Assistant. At a configured time the add-on
+Scheduled quiet windows for Home Assistant OS. At a configured time the add-on
 gracefully stops Home Assistant Core (and, optionally, a list of other add-ons),
-holds them down for a short maintenance window, and then restarts everything
-automatically.
+temporarily starts selected add-ons, holds that state for a short maintenance
+window, and then restores everything automatically.
+
+The main use case is external maintenance that Home Assistant should stay quiet
+for: host or NAS backups, storage pressure, network maintenance, router restarts,
+internet outages, attached hardware maintenance, and sensor work.
 
 ## How it works
 
@@ -19,6 +23,10 @@ so it can start Core back up). On a schedule you define, it:
 
 The global `restart_core`, `stop_addons`, and `start_addons` options are defaults.
 Each window can override them with its own values.
+
+Windows are executed one at a time. If you need SSH available while Core is down,
+put `restart_core: true` and `start_addons: [core_ssh]` on the same window rather
+than creating a second overlapping window.
 
 It talks to the [Supervisor API](https://developers.home-assistant.io/docs/api/supervisor/endpoints)
 using the add-on's `SUPERVISOR_TOKEN`. This requires `hassio_api: true` and
@@ -84,6 +92,9 @@ starts anything. Use this to validate your schedule safely before going live.
 When `true`, Home Assistant Core is stopped during the window and restarted
 afterward. Set to `false` if you only want to cycle add-ons.
 
+The global value is a default. A window can override it with its own
+`restart_core` value.
+
 For safety, this option is not enough on its own. Core is only stopped when
 `restart_core` is `true`, `core_stop_confirmation` is set exactly to
 `STOP_CORE`, the add-on has been running longer than `startup_grace_seconds`,
@@ -113,12 +124,20 @@ A list of add-on **slugs** to stop during the window. Find an add-on's slug in
 its page URL or via the Supervisor `GET /addons` endpoint. Leave empty to only
 affect Core.
 
+The global list is a default. A window can override it with its own
+`stop_addons` list.
+
 ### Option: `start_addons`
 
 A list of add-on **slugs** to start temporarily during the window. The add-on
 checks each listed add-on first: if it was already running, it is left running
 after the window; if Maintenance Window started it, Maintenance Window stops it
 again when the window ends.
+
+This is useful for Core-independent access patterns. For example, you can start
+SSH during a hardware maintenance window even if Home Assistant Core is stopped
+or unresponsive. The global list is a default; a window can override it with its
+own `start_addons` list.
 
 Example: temporarily open the official SSH add-on for 30 minutes after 01:00,
 without restarting Home Assistant Core:
@@ -137,6 +156,35 @@ windows:
   - name: Temporary SSH access
     start_time: "01:00"
     duration_minutes: 30
+    days:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+      - sat
+      - sun
+```
+
+Example with Core stopped and SSH temporarily opened during the same window:
+
+```yaml
+log_level: info
+dry_run: true
+restart_core: false
+core_stop_confirmation: ""
+startup_grace_seconds: 300
+max_core_stop_minutes: 10
+stop_addons: []
+start_addons: []
+windows:
+  - name: Core quiet window with SSH
+    start_time: "04:00"
+    duration_minutes: 3
+    restart_core: true
+    stop_addons: []
+    start_addons:
+      - core_ssh
     days:
       - mon
       - tue
@@ -209,6 +257,23 @@ The slug is the identifier in the add-on's URL, e.g. `core_mosquitto` or
 
 ```bash
 ha addons --raw-json | jq '.data.addons[] | {name, slug}'
+```
+
+## Recovery
+
+If a real test behaves unexpectedly, disable Watchdog first if possible, then
+stop the add-on from the HAOS console or SSH:
+
+```bash
+ha addons stop 5e912390_maintenance_window
+ha supervisor restart
+ha core restart
+```
+
+If your repository hash differs, list add-ons and use the displayed slug:
+
+```bash
+ha addons list
 ```
 
 ## Status

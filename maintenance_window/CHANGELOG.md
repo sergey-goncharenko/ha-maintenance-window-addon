@@ -3,6 +3,15 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.0
+
+- Add generated `icon.png` and `logo.png` artwork.
+- Clarify positioning around external maintenance windows: host backups,
+  network/router work, hardware maintenance, and sensor work.
+- Document Core-independent add-on start use cases, including opening SSH during
+  the same window that stops Core.
+- Rename global action labels to make clear they are defaults for windows.
+
 ## 0.6.2
 
 - Fix the s6 service runner so it calls the sourced `main` function instead of

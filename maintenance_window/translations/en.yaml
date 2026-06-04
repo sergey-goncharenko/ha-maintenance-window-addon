@@ -11,9 +11,10 @@ configuration:
       stops or starts Home Assistant Core or any add-on. Great for validating a
       schedule safely.
   restart_core:
-    name: Stop & restart Home Assistant Core
+    name: Default Core stop/restart
     description: >-
-      When enabled, Home Assistant Core is stopped at the start of the window and
+      Default used by windows that do not set their own Core action. When
+      enabled, Home Assistant Core is stopped at the start of the window and
       started again at the end. Disable to only cycle the selected add-ons.
   core_stop_confirmation:
     name: Core stop confirmation
@@ -33,17 +34,16 @@ configuration:
       Maximum maintenance window duration that is allowed to stop Home Assistant
       Core. Longer windows can still start/stop add-ons, but Core stays running.
   stop_addons:
-    name: Add-ons to stop
+    name: Default add-ons to stop
     description: >-
-      List of add-on slugs to stop during the maintenance window (e.g.
-      core_mosquitto). They are started again when the window ends. Leave empty
-      to only affect Core.
+      Default list used by windows that do not set their own stop list. Add-ons
+      are started again when the window ends. Leave empty to only affect Core.
   start_addons:
-    name: Add-ons to start temporarily
+    name: Default add-ons to start temporarily
     description: >-
-      List of add-on slugs to start at the beginning of the maintenance window.
-      Add-ons that were already running are left running; add-ons started by this
-      scheduler are stopped again when the window ends.
+      Default list used by windows that do not set their own start list. Add-ons
+      already running are left running; add-ons started by this scheduler are
+      stopped again when the window ends.
   windows:
     name: Maintenance windows
     description: >-
@@ -62,18 +62,18 @@ configuration:
       restart_core:
         name: Stop & restart Home Assistant Core
         description: >-
-          Optional per-window override. When omitted, the global Stop & restart
-          Home Assistant Core setting is used.
+          Optional per-window override. Use this when one window should stop Core
+          and another should not.
       stop_addons:
         name: Add-ons to stop
         description: >-
-          Optional per-window override. When omitted, the global Add-ons to stop
-          list is used.
+          Optional per-window override. Use this when one window should stop a
+          different add-on set than the defaults.
       start_addons:
         name: Add-ons to start temporarily
         description: >-
-          Optional per-window override. When omitted, the global Add-ons to start
-          temporarily list is used.
+          Optional per-window override. Use this to open SSH or another add-on
+          during this window, even while Core is down.
       days:
         name: Days
         description: Days of the week this window runs (mon through sun).
