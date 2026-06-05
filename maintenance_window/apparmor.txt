@@ -30,5 +30,6 @@ profile maintenance_window flags=(attach_disconnected,mediate_deleted) {
 
   # Add-on state and temporary files.
   /data/** rwk,
+  /addon_config/** rwk,
   /tmp/** rwk,
 }

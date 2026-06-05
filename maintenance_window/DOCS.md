@@ -55,6 +55,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
+list_addons_on_startup: true
 stop_addons:
   - core_mosquitto
   - a0d7b954_nodered
@@ -118,6 +119,20 @@ Maximum maintenance window duration allowed to stop Core. The default is `60`
 minutes. If a window is longer than this, the add-on can still start/stop other
 add-ons, but Core is left running.
 
+### Option: `list_addons_on_startup`
+
+When `true`, the add-on queries Supervisor for installed add-ons on startup,
+logs their names/slugs/states, and writes a copyable inventory file to:
+
+```txt
+/addon_config/available_addons.md
+```
+
+Use that file or the startup log to copy add-on slugs into `stop_addons` or
+`start_addons`. This is a workaround for a Home Assistant UI limitation: the
+built-in add-on configuration form is generated from a static schema and cannot
+dynamically list installed Supervisor add-ons.
+
 ### Option: `stop_addons`
 
 A list of add-on **slugs** to stop during the window. Find an add-on's slug in
@@ -149,6 +164,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
+list_addons_on_startup: true
 stop_addons: []
 start_addons:
   - core_ssh
@@ -175,6 +191,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 10
+list_addons_on_startup: true
 stop_addons: []
 start_addons: []
 windows:
@@ -221,6 +238,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
+list_addons_on_startup: true
 stop_addons: []
 start_addons: []
 windows:
@@ -253,7 +271,9 @@ windows:
 ## Finding add-on slugs
 
 The slug is the identifier in the add-on's URL, e.g. `core_mosquitto` or
-`a0d7b954_nodered`. You can also list them all from a terminal:
+`a0d7b954_nodered`. With `list_addons_on_startup: true`, Maintenance Window also
+writes `/addon_config/available_addons.md` and logs installed add-on slugs on startup.
+You can also list them all from a terminal:
 
 ```bash
 ha addons --raw-json | jq '.data.addons[] | {name, slug}'
@@ -261,8 +281,8 @@ ha addons --raw-json | jq '.data.addons[] | {name, slug}'
 
 The built-in Home Assistant add-on configuration form is generated from this
 add-on's static schema. It cannot dynamically list the add-ons installed on your
-system inside the `start_addons` / `stop_addons` picker. For now, enter slugs
-manually from the command above. A future ingress UI could provide a richer
+system inside the `start_addons` / `stop_addons` picker. The startup inventory is
+the current lightweight workaround. A future ingress UI could provide a richer
 selector by querying the Supervisor API directly.
 
 ## Recovery

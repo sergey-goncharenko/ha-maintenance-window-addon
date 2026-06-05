@@ -3,6 +3,13 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.0
+
+- Add `list_addons_on_startup` to log installed Supervisor add-ons and write a
+  copyable add-on slug inventory to `/addon_config/available_addons.md`.
+- Refresh generated artwork to a plain Home Assistant-style home outline over a
+  yellow/black maintenance tape pattern.
+
 ## 0.7.4
 
 - Refresh generated artwork to a Home Assistant-style home mark over a full

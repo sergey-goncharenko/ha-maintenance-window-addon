@@ -33,6 +33,11 @@ configuration:
     description: >-
       Maximum maintenance window duration that is allowed to stop Home Assistant
       Core. Longer windows can still start/stop add-ons, but Core stays running.
+  list_addons_on_startup:
+    name: List installed add-ons on startup
+    description: >-
+      When enabled, writes a copyable Supervisor add-on inventory to the add-on
+      config folder and logs each add-on slug. This helps fill stop/start lists.
   stop_addons:
     name: Default add-ons to stop
     description: >-

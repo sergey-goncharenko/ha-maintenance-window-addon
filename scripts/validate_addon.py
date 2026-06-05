@@ -155,6 +155,11 @@ def validate_apparmor(config: dict) -> None:
     if apparmor_setting is not False and not apparmor_file.exists():
         fail("apparmor is enabled/default but maintenance_window/apparmor.txt is missing")
 
+    if apparmor_file.exists():
+        apparmor_text = apparmor_file.read_text(encoding="utf-8")
+        if "/addon_config/** rwk," not in apparmor_text:
+            fail("AppArmor profile must allow /addon_config/** rwk for add-on inventory output")
+
 
 def validate_line_endings() -> None:
     checked_paths = [

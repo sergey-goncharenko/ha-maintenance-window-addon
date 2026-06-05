@@ -28,6 +28,7 @@ readonly SUPERVISOR_API="http://supervisor"
 readonly ADDON_SLUG="maintenance_window"
 readonly NO_WINDOW_SLEEP_SECONDS="300"
 readonly WINDOW_STATE_FILE="/data/maintenance-window-state.json"
+readonly ADDON_INVENTORY_FILE="/addon_config/available_addons.md"
 STARTED_AT_EPOCH="$(date +%s)"
 readonly STARTED_AT_EPOCH
 
@@ -67,6 +68,66 @@ addon_state() {
 
     response="$(supervisor_api "GET" "/addons/${slug}/info")"
     jq --raw-output '.data.state // empty' <<< "${response}"
+}
+
+# -----------------------------------------------------------------------------
+# Write and log installed Supervisor add-ons so users can copy slugs into config.
+# -----------------------------------------------------------------------------
+write_addon_inventory() {
+    local response
+    local count
+    local slug
+    local name
+    local state
+
+    if ! bashio::config.true 'list_addons_on_startup'; then
+        return 0
+    fi
+
+    if ! response="$(supervisor_api "GET" "/addons")"; then
+        bashio::log.warning "Could not list Supervisor add-ons for inventory."
+        return 0
+    fi
+
+    mkdir -p "$(dirname "${ADDON_INVENTORY_FILE}")"
+
+    {
+        echo "# Available Supervisor add-ons"
+        echo
+        echo "Copy slugs from this table into Maintenance Window's stop_addons or start_addons options."
+        echo
+        echo "| Name | Slug | State |"
+        echo "| ---- | ---- | ----- |"
+        jq --raw-output '
+            .data.addons[]
+            | [.name, .slug, (.state // "unknown")]
+            | @tsv
+        ' <<< "${response}" |
+            while IFS=$'\t' read -r name slug state; do
+                [[ -z "${slug}" ]] && continue
+                if addon_is_self "${slug}"; then
+                    continue
+                fi
+                printf '| %s | `%s` | %s |\n' "${name}" "${slug}" "${state}"
+            done
+    } > "${ADDON_INVENTORY_FILE}"
+
+    count="$(jq '.data.addons | length' <<< "${response}")"
+    bashio::log.info "Wrote Supervisor add-on inventory (${count} add-ons) to ${ADDON_INVENTORY_FILE}"
+    bashio::log.info "Installed add-ons available for Maintenance Window actions:"
+
+    jq --raw-output '
+        .data.addons[]
+        | [.name, .slug, (.state // "unknown")]
+        | @tsv
+    ' <<< "${response}" |
+        while IFS=$'\t' read -r name slug state; do
+            [[ -z "${slug}" ]] && continue
+            if addon_is_self "${slug}"; then
+                continue
+            fi
+            bashio::log.info "  ${slug} — ${name} (${state})"
+        done
 }
 
 # -----------------------------------------------------------------------------
@@ -588,6 +649,7 @@ main() {
     fi
 
     restore_window_from_state
+    write_addon_inventory
 
     while true; do
         local next_window_details
