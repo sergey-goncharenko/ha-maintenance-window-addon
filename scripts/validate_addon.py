@@ -167,6 +167,7 @@ def validate_line_endings() -> None:
         ADDON / "rootfs" / "usr" / "lib" / "maintenance-window" / "scheduler.sh",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "run",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "finish",
+        ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "type",
     ]
     apparmor_file = ADDON / "apparmor.txt"
     if apparmor_file.exists():
@@ -180,8 +181,11 @@ def validate_line_endings() -> None:
 
 def validate_s6_runner() -> None:
     run_script = ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "run"
+    type_file = ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "type"
     text = run_script.read_text(encoding="utf-8")
 
+    if type_file.read_text(encoding="utf-8") != "longrun\n":
+        fail("s6 service type file must contain exactly 'longrun' followed by LF")
     if "exec main" in text:
         fail("s6 run script must call the sourced main function, not 'exec main'")
     if not re.search(r"^main$", text, re.MULTILINE):

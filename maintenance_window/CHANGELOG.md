@@ -3,6 +3,11 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.2
+
+- Normalize the s6 service `type` file to LF-only `longrun` content and add
+  validation to prevent CRLF service metadata from reaching images.
+
 ## 0.8.1
 
 - Fix ShellCheck warning in add-on inventory Markdown generation.
