@@ -3,6 +3,10 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.7.3
+
+- Simplify generated artwork to a black/yellow Home Assistant-style house mark.
+
 ## 0.7.2
 
 - Simplify generated artwork to a Home Assistant-style house mark in a
