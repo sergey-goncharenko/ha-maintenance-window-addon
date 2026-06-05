@@ -3,6 +3,10 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.1
+
+- Fix ShellCheck warning in add-on inventory Markdown generation.
+
 ## 0.8.0
 
 - Add `list_addons_on_startup` to log installed Supervisor add-ons and write a

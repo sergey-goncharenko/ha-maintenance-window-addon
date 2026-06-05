@@ -108,7 +108,7 @@ write_addon_inventory() {
                 if addon_is_self "${slug}"; then
                     continue
                 fi
-                printf '| %s | `%s` | %s |\n' "${name}" "${slug}" "${state}"
+                printf "| %s | \`%s\` | %s |\n" "${name}" "${slug}" "${state}"
             done
     } > "${ADDON_INVENTORY_FILE}"
 
