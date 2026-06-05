@@ -259,6 +259,12 @@ The slug is the identifier in the add-on's URL, e.g. `core_mosquitto` or
 ha addons --raw-json | jq '.data.addons[] | {name, slug}'
 ```
 
+The built-in Home Assistant add-on configuration form is generated from this
+add-on's static schema. It cannot dynamically list the add-ons installed on your
+system inside the `start_addons` / `stop_addons` picker. For now, enter slugs
+manually from the command above. A future ingress UI could provide a richer
+selector by querying the Supervisor API directly.
+
 ## Recovery
 
 If a real test behaves unexpectedly, disable Watchdog first if possible, then
