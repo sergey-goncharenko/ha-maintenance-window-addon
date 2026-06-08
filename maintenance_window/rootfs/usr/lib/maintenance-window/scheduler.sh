@@ -431,7 +431,9 @@ restore_window_from_state() {
 # Restore services if the add-on is terminated during an active window.
 # -----------------------------------------------------------------------------
 handle_shutdown() {
-    bashio::log.warning "Maintenance Window add-on is shutting down; checking for active restore state."
+    local signal_name="${1:-signal}"
+
+    bashio::log.warning "Maintenance Window add-on received ${signal_name}; checking for active restore state."
     restore_window_from_state
     exit 0
 }
@@ -642,7 +644,8 @@ main() {
     bashio::log.info "Maintenance Window add-on started."
     bashio::log.info "dry_run=$(bashio::config 'dry_run'), restart_core=$(bashio::config 'restart_core')"
 
-    trap handle_shutdown INT TERM
+    trap 'handle_shutdown INT' INT
+    trap 'handle_shutdown TERM' TERM
 
     if bashio::config.true 'dry_run'; then
         bashio::log.notice "DRY RUN mode is enabled — no add-ons or Core will actually be stopped."

@@ -3,6 +3,14 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.3
+
+- Keep the s6 long-run service finish hook from halting the whole add-on
+  container on ordinary scheduler exits, reducing misleading post-window add-on
+  restarts.
+- Log the shutdown signal received by the scheduler before running restore
+  checks.
+
 ## 0.8.2
 
 - Normalize the s6 service `type` file to LF-only `longrun` content and add
