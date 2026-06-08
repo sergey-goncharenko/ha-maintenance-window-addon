@@ -25,10 +25,12 @@
 # shellcheck shell=bash
 
 readonly SUPERVISOR_API="http://supervisor"
+readonly HOMEASSISTANT_API="${SUPERVISOR_API}/core/api"
 readonly ADDON_SLUG="maintenance_window"
 readonly NO_WINDOW_SLEEP_SECONDS="300"
 readonly WINDOW_STATE_FILE="/data/maintenance-window-state.json"
 readonly ADDON_INVENTORY_FILE="/addon_config/available_addons.md"
+readonly CORE_READY_POLL_SECONDS="5"
 STARTED_AT_EPOCH="$(date +%s)"
 readonly STARTED_AT_EPOCH
 
@@ -57,6 +59,22 @@ supervisor_api() {
         --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         --header "Content-Type: application/json" \
         "${SUPERVISOR_API}${path}"
+}
+
+# -----------------------------------------------------------------------------
+# Helper: perform an authenticated Home Assistant Core API call through the
+# Supervisor proxy. This works after Core has started and requires
+# config.json: "homeassistant_api": true.
+# -----------------------------------------------------------------------------
+homeassistant_api() {
+    local method="${1}"
+    local path="${2}"
+
+    curl --silent --fail --output /dev/null \
+        --request "${method}" \
+        --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        --header "Content-Type: application/json" \
+        "${HOMEASSISTANT_API}${path}"
 }
 
 # -----------------------------------------------------------------------------
@@ -355,6 +373,34 @@ stop_core() {
 # -----------------------------------------------------------------------------
 # Start Home Assistant Core.
 # -----------------------------------------------------------------------------
+wait_for_core_api() {
+    local timeout_seconds
+    local deadline
+    local elapsed_seconds
+
+    timeout_seconds="$(config_int 'core_start_timeout_seconds' 600)"
+    if (( timeout_seconds == 0 )); then
+        bashio::log.info "Core API readiness wait is disabled."
+        return 0
+    fi
+
+    bashio::log.info "Waiting up to ${timeout_seconds}s for Home Assistant Core API to become ready..."
+    deadline="$(( $(date +%s) + timeout_seconds ))"
+
+    while (( $(date +%s) < deadline )); do
+        if homeassistant_api "GET" "/"; then
+            elapsed_seconds="$(( timeout_seconds - (deadline - $(date +%s)) ))"
+            bashio::log.info "Home Assistant Core API is ready after ${elapsed_seconds}s."
+            return 0
+        fi
+
+        sleep "${CORE_READY_POLL_SECONDS}"
+    done
+
+    bashio::log.warning "Home Assistant Core API did not become ready within ${timeout_seconds}s; continuing restore anyway."
+    return 1
+}
+
 start_core() {
     local force="${1:-false}"
 
@@ -370,7 +416,10 @@ start_core() {
     bashio::log.info "Starting Home Assistant Core..."
     if ! supervisor_api "POST" "/core/start"; then
         bashio::log.error "Failed to start Home Assistant Core"
+        return 0
     fi
+
+    wait_for_core_api || true
 }
 
 # -----------------------------------------------------------------------------

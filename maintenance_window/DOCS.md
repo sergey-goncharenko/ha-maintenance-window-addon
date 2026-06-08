@@ -55,6 +55,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
+core_start_timeout_seconds: 600
 list_addons_on_startup: true
 stop_addons:
   - core_mosquitto
@@ -118,6 +119,16 @@ immediately after installing, booting, or watchdog-restarting the add-on.
 Maximum maintenance window duration allowed to stop Core. The default is `60`
 minutes. If a window is longer than this, the add-on can still start/stop other
 add-ons, but Core is left running.
+
+### Option: `core_start_timeout_seconds`
+
+Maximum number of seconds to wait for the Home Assistant Core API to respond
+after the add-on asks Supervisor to start Core. The default is `600` seconds.
+
+This wait happens during restore, after Core has been started. It does not keep
+Core stopped longer; it keeps Maintenance Window from declaring the restore
+complete while Core is still booting or being restarted by Supervisor health
+checks. Set to `0` to disable the readiness wait.
 
 ### Option: `list_addons_on_startup`
 

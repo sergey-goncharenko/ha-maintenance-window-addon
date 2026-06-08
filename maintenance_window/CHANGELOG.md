@@ -3,6 +3,12 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.4
+
+- Wait for the Home Assistant Core API to become ready after starting Core,
+  before declaring the maintenance window complete.
+- Add `core_start_timeout_seconds` to control the Core startup readiness wait.
+
 ## 0.8.3
 
 - Keep the s6 long-run service finish hook from halting the whole add-on
