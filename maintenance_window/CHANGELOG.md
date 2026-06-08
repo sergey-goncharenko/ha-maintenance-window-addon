@@ -3,6 +3,12 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.5
+
+- Add `pause_core_watchdog`, enabled by default, to temporarily pause the Home
+  Assistant Core watchdog during intentional Core stop/start windows and restore
+  the previous watchdog setting afterward.
+
 ## 0.8.4
 
 - Wait for the Home Assistant Core API to become ready after starting Core,

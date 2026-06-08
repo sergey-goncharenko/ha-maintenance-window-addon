@@ -17,6 +17,8 @@
 # token against http://supervisor):
 #   POST /core/stop                 Stop Home Assistant Core
 #   POST /core/start                Start Home Assistant Core
+#   GET  /core/info                 Inspect Core/Supervisor state
+#   POST /core/options              Update Core options such as watchdog
 #   POST /addons/<slug>/stop        Stop an add-on
 #   POST /addons/<slug>/start       Start an add-on
 #   GET  /addons/<slug>/info        Inspect an add-on (state, etc.)
@@ -58,6 +60,23 @@ supervisor_api() {
         --request "${method}" \
         --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         --header "Content-Type: application/json" \
+        "${SUPERVISOR_API}${path}"
+}
+
+# -----------------------------------------------------------------------------
+# Helper: perform an authenticated Supervisor API call with a JSON body.
+# Usage: supervisor_api_json <METHOD> <PATH> <JSON>
+# -----------------------------------------------------------------------------
+supervisor_api_json() {
+    local method="${1}"
+    local path="${2}"
+    local payload="${3}"
+
+    curl --silent --show-error --fail \
+        --request "${method}" \
+        --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        --header "Content-Type: application/json" \
+        --data "${payload}" \
         "${SUPERVISOR_API}${path}"
 }
 
@@ -371,6 +390,73 @@ stop_core() {
 }
 
 # -----------------------------------------------------------------------------
+# Inspect and update Home Assistant Core watchdog through Supervisor.
+# -----------------------------------------------------------------------------
+core_watchdog_state() {
+    local response
+
+    response="$(supervisor_api "GET" "/core/info")"
+    jq --raw-output '.data.watchdog // empty' <<< "${response}"
+}
+
+set_core_watchdog() {
+    local desired_state="${1}"
+
+    supervisor_api_json "POST" "/core/options" "{\"watchdog\":${desired_state}}" > /dev/null
+}
+
+core_watchdog_restore_value() {
+    local state
+
+    if ! bashio::config.true 'pause_core_watchdog'; then
+        echo 'null'
+        return 0
+    fi
+
+    if ! state="$(core_watchdog_state)"; then
+        bashio::log.warning "Could not inspect Home Assistant Core watchdog state; leaving it unchanged." >&2
+        echo 'null'
+        return 0
+    fi
+
+    case "${state}" in
+        true|false)
+            echo "${state}"
+            ;;
+        *)
+            bashio::log.warning "Home Assistant Core watchdog state is unknown; leaving it unchanged." >&2
+            echo 'null'
+            ;;
+    esac
+}
+
+pause_core_watchdog_if_needed() {
+    local restore_value="${1}"
+
+    if [[ "${restore_value}" != "true" ]]; then
+        return 0
+    fi
+
+    bashio::log.info "Pausing Home Assistant Core watchdog during the maintenance window."
+    if ! set_core_watchdog false; then
+        bashio::log.warning "Could not pause Home Assistant Core watchdog; continuing with watchdog unchanged."
+    fi
+}
+
+restore_core_watchdog_if_needed() {
+    local restore_value="${1}"
+
+    case "${restore_value}" in
+        true|false)
+            bashio::log.info "Restoring Home Assistant Core watchdog to ${restore_value}."
+            if ! set_core_watchdog "${restore_value}"; then
+                bashio::log.warning "Could not restore Home Assistant Core watchdog to ${restore_value}."
+            fi
+            ;;
+    esac
+}
+
+# -----------------------------------------------------------------------------
 # Start Home Assistant Core.
 # -----------------------------------------------------------------------------
 wait_for_core_api() {
@@ -429,6 +515,7 @@ write_window_state() {
     local addons_to_restart_json="${1}"
     local temporary_addons_to_stop_json="${2}"
     local restart_core_json="${3}"
+    local core_watchdog_restore_json="${4}"
 
     if bashio::config.true 'dry_run'; then
         return 0
@@ -436,9 +523,10 @@ write_window_state() {
 
     if ! jq --null-input \
         --argjson restart_core "${restart_core_json}" \
+        --argjson core_watchdog_restore "${core_watchdog_restore_json}" \
         --argjson addons_to_restart "${addons_to_restart_json}" \
         --argjson temporary_addons_to_stop "${temporary_addons_to_stop_json}" \
-        '{restart_core: $restart_core, addons_to_restart: $addons_to_restart, temporary_addons_to_stop: $temporary_addons_to_stop}' \
+        '{restart_core: $restart_core, core_watchdog_restore: $core_watchdog_restore, addons_to_restart: $addons_to_restart, temporary_addons_to_stop: $temporary_addons_to_stop}' \
         > "${WINDOW_STATE_FILE}"; then
         bashio::log.error "Failed to write active-window recovery state; refusing to stop Home Assistant Core."
         return 1
@@ -450,6 +538,7 @@ write_window_state() {
 # -----------------------------------------------------------------------------
 restore_window_from_state() {
     local should_start_core
+    local core_watchdog_restore
     local slug
 
     if [[ ! -f "${WINDOW_STATE_FILE}" ]]; then
@@ -459,6 +548,7 @@ restore_window_from_state() {
     bashio::log.warning "Found active maintenance window state; restoring services."
 
     should_start_core="$(jq --raw-output '.restart_core // false' "${WINDOW_STATE_FILE}")"
+    core_watchdog_restore="$(jq --raw-output '.core_watchdog_restore // "null"' "${WINDOW_STATE_FILE}")"
     if [[ "${should_start_core}" == "true" ]]; then
         start_core true
     fi
@@ -472,6 +562,8 @@ restore_window_from_state() {
         [[ -z "${slug}" ]] && continue
         stop_addon "${slug}"
     done < <(jq --raw-output '.temporary_addons_to_stop[]?' "${WINDOW_STATE_FILE}")
+
+    restore_core_watchdog_if_needed "${core_watchdog_restore}"
 
     rm -f "${WINDOW_STATE_FILE}"
 }
@@ -506,6 +598,7 @@ run_maintenance_window() {
     local -a addons_to_restart=()
     local -a temporary_addons_to_stop=()
     local core_will_stop="false"
+    local core_watchdog_restore="null"
 
     bashio::log.notice "=== Entering maintenance window: ${name} (${duration_minutes} min) ==="
 
@@ -527,18 +620,24 @@ run_maintenance_window() {
 
     if should_stop_core_for_window "${duration_minutes}" "${window_index}"; then
         core_will_stop="true"
+        if ! bashio::config.true 'dry_run'; then
+            core_watchdog_restore="$(core_watchdog_restore_value)"
+        fi
     fi
 
     if ! bashio::config.true 'dry_run'; then
         if ! write_window_state \
             "$(json_array "${addons_to_restart[@]}")" \
             "$(json_array "${temporary_addons_to_stop[@]}")" \
-            "${core_will_stop}"; then
+            "${core_will_stop}" \
+            "${core_watchdog_restore}"; then
             core_will_stop="false"
+            core_watchdog_restore="null"
         fi
     fi
 
     if [[ "${core_will_stop}" == "true" ]]; then
+        pause_core_watchdog_if_needed "${core_watchdog_restore}"
         stop_core
     fi
 

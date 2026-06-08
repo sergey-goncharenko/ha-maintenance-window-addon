@@ -56,6 +56,7 @@ core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
 core_start_timeout_seconds: 600
+pause_core_watchdog: true
 list_addons_on_startup: true
 stop_addons:
   - core_mosquitto
@@ -129,6 +130,17 @@ This wait happens during restore, after Core has been started. It does not keep
 Core stopped longer; it keeps Maintenance Window from declaring the restore
 complete while Core is still booting or being restarted by Supervisor health
 checks. Set to `0` to disable the readiness wait.
+
+### Option: `pause_core_watchdog`
+
+When `true`, the add-on temporarily disables the Home Assistant Core watchdog
+while it intentionally stops and starts Core, then restores the watchdog to its
+previous value after the restore phase completes.
+
+This helps prevent Supervisor from treating the intentionally stopped or still
+booting Core service as unhealthy and restarting it during the same maintenance
+cycle. If Supervisor refuses the option on your installation, Maintenance Window
+logs a warning and continues with the watchdog unchanged.
 
 ### Option: `list_addons_on_startup`
 

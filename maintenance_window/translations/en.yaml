@@ -39,6 +39,12 @@ configuration:
       Number of seconds to wait for the Home Assistant Core API to respond after
       starting Core. This keeps the restore phase open while Core is still
       booting or being restarted by Supervisor health checks.
+  pause_core_watchdog:
+    name: Pause Core watchdog during windows
+    description: >-
+      Temporarily disables the Home Assistant Core watchdog while Maintenance
+      Window intentionally stops and starts Core, then restores the previous
+      watchdog setting after Core is restored.
   list_addons_on_startup:
     name: List installed add-ons on startup
     description: >-

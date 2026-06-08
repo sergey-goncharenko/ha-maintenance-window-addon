@@ -45,6 +45,8 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 10
+core_start_timeout_seconds: 600
+pause_core_watchdog: true
 stop_addons: []
 start_addons: []
 windows:
@@ -96,7 +98,9 @@ The default configuration is non-mutating: `dry_run` is enabled and Core restart
 are disabled. To allow Home Assistant Core to be stopped, you must explicitly set
 `restart_core: true` and `core_stop_confirmation: STOP_CORE`. The add-on also
 blocks Core stops during a startup grace period and blocks windows longer than
-the configured maximum Core stop duration.
+the configured maximum Core stop duration. During intentional Core stop/start
+windows, it can temporarily pause the Home Assistant Core watchdog and restores
+the previous watchdog setting after Core recovery.
 
 > ⚠️ This add-on can stop Home Assistant Core. While Core is stopped, automations,
 > the UI, and integrations are unavailable. The add-on itself runs independently
