@@ -44,6 +44,15 @@ installation should pull a prebuilt image instead of building on the HAOS device
 > (e.g. the middle of the night). The add-on is what brings Core back, so do not
 > stop this add-on during a maintenance window.
 
+## Development note
+
+Maintenance Window was developed with AI assistance, with human review and
+iterative testing throughout. It has been personally tested on a real Home
+Assistant OS setup, including dry-run validation, real Core stop/start windows,
+add-on stop/start restore, watchdog pause/restore, and recovery behavior. Even
+so, test carefully on your own system before relying on it for unattended
+maintenance.
+
 ## Configuration
 
 Example add-on options:

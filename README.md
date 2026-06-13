@@ -135,6 +135,15 @@ the previous watchdog setting after Core recovery.
 > the UI, and integrations are unavailable. The add-on itself runs independently
 > of Core and is responsible for starting Core again at the end of the window.
 
+## Development note
+
+This project was developed with AI assistance, with human review and iterative
+testing throughout. It has been personally tested on a real Home Assistant OS
+setup, including dry-run validation, real Core stop/start windows, add-on
+stop/start restore, watchdog pause/restore, and recovery behavior. Even so,
+please test carefully on your own system before relying on it for unattended
+maintenance.
+
 ## Recovery
 
 If a test behaves unexpectedly, disable Watchdog first, then stop the add-on from
