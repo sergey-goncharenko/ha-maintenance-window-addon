@@ -1,0 +1,40 @@
+name: Configuration help
+description: Ask for help configuring windows or add-on slugs
+title: "[Config]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tip: Maintenance Window logs installed Supervisor add-on slugs on startup when `list_addons_on_startup` is enabled. You can copy slugs such as `a0d7b954_ssh` from the add-on log or `/addon_config/available_addons.md`.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What do you want Maintenance Window to do?
+      placeholder: "Example: stop Core at 03:00 every night, keep SSH available, and restart Prometheus Node Exporter afterward."
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Current configuration
+      description: Paste your current options. Remove secrets and private data.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: startup_log
+    attributes:
+      label: Startup slug inventory log
+      description: Optional. Paste the startup lines that list installed add-ons.
+      render: text
+    validations:
+      required: false
+  - type: input
+    id: addon_version
+    attributes:
+      label: Maintenance Window version
+      placeholder: "0.8.6"
+    validations:
+      required: false

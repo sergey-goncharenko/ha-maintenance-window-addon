@@ -156,11 +156,21 @@ Use that file or the startup log to copy add-on slugs into `stop_addons` or
 built-in add-on configuration form is generated from a static schema and cannot
 dynamically list installed Supervisor add-ons.
 
+Startup log lines look like this:
+
+```text
+[04:12:05] INFO:   a0d7b954_ssh - Advanced SSH & Web Terminal (started)
+[04:12:05] INFO:   0d869efa_prometheus_node_exporter - Prometheus Node Exporter (started)
+```
+
+Use the slug at the start of the line, for example `a0d7b954_ssh`, in
+`stop_addons` or `start_addons`.
+
 ### Option: `stop_addons`
 
-A list of add-on **slugs** to stop during the window. Find an add-on's slug in
-its page URL or via the Supervisor `GET /addons` endpoint. Leave empty to only
-affect Core.
+A list of add-on **slugs** to stop during the window. Copy slugs from the
+startup log or `/addon_config/available_addons.md`. Leave empty to only affect
+Core.
 
 The global list is a default. A window can override it with its own
 `stop_addons` list.

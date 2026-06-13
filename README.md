@@ -104,6 +104,23 @@ See the add-on's [documentation](./maintenance_window/DOCS.md) for configuration
 The add-on uses a prebuilt multi-architecture image published to GHCR, so HAOS
 should pull the image during installation instead of building it locally.
 
+## Finding add-on slugs
+
+Maintenance Window uses Supervisor add-on slugs, such as `a0d7b954_ssh` or
+`0d869efa_prometheus_node_exporter`, in `stop_addons` and `start_addons`.
+
+The easiest way to find them is to keep `list_addons_on_startup: true` and open
+the Maintenance Window log after the add-on starts. It logs installed add-ons in
+this format:
+
+```text
+[04:12:05] INFO:   a0d7b954_ssh - Advanced SSH & Web Terminal (started)
+[04:12:05] INFO:   0d869efa_prometheus_node_exporter - Prometheus Node Exporter (started)
+```
+
+Copy the slug at the start of the line into your window configuration. The same
+inventory is also written to `/addon_config/available_addons.md`.
+
 ## Safety defaults
 
 The default configuration is non-mutating: `dry_run` is enabled and Core restarts
@@ -134,3 +151,14 @@ If your repository hash differs, find the slug with:
 ```bash
 ha addons list
 ```
+
+## Support and security
+
+- Read [SUPPORT.md](SUPPORT.md) before opening a troubleshooting issue.
+- Report security-sensitive problems using the guidance in [SECURITY.md](SECURITY.md).
+- Use the GitHub issue templates for bug reports, feature requests, and
+  configuration help.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

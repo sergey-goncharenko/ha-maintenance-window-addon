@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement for Maintenance Window
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do that Maintenance Window does not support well today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or UI you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. Include workarounds or related Home Assistant features you tried.
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Optional. Include HAOS/Supervisor/Core versions if relevant.
+      placeholder: "Core 2026.6.1, Supervisor 2026.05.1, HAOS 17.3"
+    validations:
+      required: false

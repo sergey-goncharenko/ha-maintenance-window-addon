@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a problem with Maintenance Window
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please remove secrets, tokens, private URLs, hostnames, and personal Home Assistant data before posting logs.
+  - type: input
+    id: addon_version
+    attributes:
+      label: Maintenance Window version
+      placeholder: "0.8.6"
+    validations:
+      required: true
+  - type: input
+    id: ha_versions
+    attributes:
+      label: Home Assistant environment
+      description: Include Core, Supervisor, HAOS, and hardware/architecture if possible.
+      placeholder: "Core 2026.6.1, Supervisor 2026.05.1, HAOS 17.3, Raspberry Pi 4 / aarch64"
+    validations:
+      required: true
+  - type: dropdown
+    id: watchdog
+    attributes:
+      label: Add-on Watchdog enabled?
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant add-on configuration
+      description: Paste only the relevant options. Remove secrets and private data.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: maintenance_log
+    attributes:
+      label: Maintenance Window log
+      description: Include logs around the affected window.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: supervisor_log
+    attributes:
+      label: Supervisor log
+      description: Include matching timestamps when Core/add-ons were stopped or started.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: core_log
+    attributes:
+      label: Home Assistant Core log
+      description: Include matching timestamps if Core was affected.
+      render: text
+    validations:
+      required: false
