@@ -2,7 +2,7 @@ blank_issues_enabled: false
 contact_links:
   - name: Documentation
     url: https://github.com/sergey-goncharenko/ha-maintenance-window-addon/blob/main/maintenance_window/DOCS.md
-    about: Read the full add-on configuration guide.
+    about: Read the full app configuration guide.
   - name: Support guide
     url: https://github.com/sergey-goncharenko/ha-maintenance-window-addon/blob/main/SUPPORT.md
     about: See what logs and version details are useful for troubleshooting.

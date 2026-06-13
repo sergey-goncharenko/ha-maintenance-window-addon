@@ -2,11 +2,11 @@
 # ==============================================================================
 # Maintenance Window — shared scheduler library
 #
-# This file contains the core logic for the add-on:
+# This file contains the core logic for the app:
 #   * read user configuration (via bashio / /data/options.json)
 #   * wait until the next scheduled maintenance window
-#   * temporarily start configured add-ons
-#   * stop configured add-ons and (optionally) Home Assistant Core
+#   * temporarily start configured apps
+#   * stop configured apps and (optionally) Home Assistant Core
 #   * hold for the window duration
 #   * start everything back up
 #
@@ -19,9 +19,9 @@
 #   POST /core/start                Start Home Assistant Core
 #   GET  /core/info                 Inspect Core/Supervisor state
 #   POST /core/options              Update Core options such as watchdog
-#   POST /addons/<slug>/stop        Stop an add-on
-#   POST /addons/<slug>/start       Start an add-on
-#   GET  /addons/<slug>/info        Inspect an add-on (state, etc.)
+#   POST /addons/<slug>/stop        Stop an app
+#   POST /addons/<slug>/start       Start an app
+#   GET  /addons/<slug>/info        Inspect an app (state, etc.)
 # Requires config.json: "hassio_api": true and "hassio_role": "manager".
 # ==============================================================================
 # shellcheck shell=bash
@@ -37,7 +37,7 @@ STARTED_AT_EPOCH="$(date +%s)"
 readonly STARTED_AT_EPOCH
 
 # -----------------------------------------------------------------------------
-# Return true when the configured add-on slug points at this add-on.
+# Return true when the configured app slug points at this app.
 # -----------------------------------------------------------------------------
 addon_is_self() {
     local slug="${1}"
@@ -97,7 +97,7 @@ homeassistant_api() {
 }
 
 # -----------------------------------------------------------------------------
-# Return the Supervisor state for an add-on slug, such as "started" or "stopped".
+# Return the Supervisor state for an app slug, such as "started" or "stopped".
 # -----------------------------------------------------------------------------
 addon_state() {
     local slug="${1}"
@@ -108,7 +108,7 @@ addon_state() {
 }
 
 # -----------------------------------------------------------------------------
-# Write and log installed Supervisor add-ons so users can copy slugs into config.
+# Write and log installed Supervisor apps so users can copy slugs into config.
 # -----------------------------------------------------------------------------
 write_addon_inventory() {
     local response
@@ -122,14 +122,14 @@ write_addon_inventory() {
     fi
 
     if ! response="$(supervisor_api "GET" "/addons")"; then
-        bashio::log.warning "Could not list Supervisor add-ons for inventory."
+        bashio::log.warning "Could not list Supervisor apps for inventory."
         return 0
     fi
 
     mkdir -p "$(dirname "${ADDON_INVENTORY_FILE}")"
 
     {
-        echo "# Available Supervisor add-ons"
+        echo "# Available Supervisor apps"
         echo
         echo "Copy slugs from this table into Maintenance Window's stop_addons or start_addons options."
         echo
@@ -150,8 +150,8 @@ write_addon_inventory() {
     } > "${ADDON_INVENTORY_FILE}"
 
     count="$(jq '.data.addons | length' <<< "${response}")"
-    bashio::log.info "Wrote Supervisor add-on inventory (${count} add-ons) to ${ADDON_INVENTORY_FILE}"
-    bashio::log.info "Installed add-ons available for Maintenance Window actions:"
+    bashio::log.info "Wrote Supervisor app inventory (${count} apps) to ${ADDON_INVENTORY_FILE}"
+    bashio::log.info "Installed apps available for Maintenance Window actions:"
 
     jq --raw-output '
         .data.addons[]
@@ -256,7 +256,7 @@ should_stop_core_for_window() {
     startup_grace_seconds="$(config_int 'startup_grace_seconds' 300)"
     uptime_seconds="$(( $(date +%s) - STARTED_AT_EPOCH ))"
     if (( uptime_seconds < startup_grace_seconds )); then
-        bashio::log.warning "Core stop blocked by startup grace period (${uptime_seconds}/${startup_grace_seconds}s since add-on start)."
+        bashio::log.warning "Core stop blocked by startup grace period (${uptime_seconds}/${startup_grace_seconds}s since app start)."
         return 1
     fi
 
@@ -270,53 +270,53 @@ should_stop_core_for_window() {
 }
 
 # -----------------------------------------------------------------------------
-# Stop a single add-on by slug.
+# Stop a single app by slug.
 # -----------------------------------------------------------------------------
 stop_addon() {
     local slug="${1}"
 
     if addon_is_self "${slug}"; then
-        bashio::log.warning "Skipping configured add-on '${slug}' because the add-on must not stop itself."
+        bashio::log.warning "Skipping configured app '${slug}' because Maintenance Window must not stop itself."
         return 1
     fi
 
     if bashio::config.true 'dry_run'; then
-        bashio::log.notice "[dry_run] Would stop add-on: ${slug}"
+        bashio::log.notice "[dry_run] Would stop app: ${slug}"
         return 0
     fi
 
-    bashio::log.info "Stopping add-on: ${slug}"
+    bashio::log.info "Stopping app: ${slug}"
     if ! supervisor_api "POST" "/addons/${slug}/stop"; then
-        bashio::log.warning "Failed to stop add-on: ${slug}"
+        bashio::log.warning "Failed to stop app: ${slug}"
     fi
 }
 
 # -----------------------------------------------------------------------------
-# Stop an add-on only if it is currently running.
-# Returns 0 when the add-on should be restarted at the end of the window.
+# Stop an app only if it is currently running.
+# Returns 0 when the app should be restarted at the end of the window.
 # -----------------------------------------------------------------------------
 stop_addon_if_running() {
     local slug="${1}"
     local state
 
     if addon_is_self "${slug}"; then
-        bashio::log.warning "Skipping configured add-on '${slug}' because the add-on must not stop itself."
+        bashio::log.warning "Skipping configured app '${slug}' because Maintenance Window must not stop itself."
         return 1
     fi
 
     if bashio::config.true 'dry_run'; then
-        bashio::log.notice "[dry_run] Would inspect and stop add-on if running: ${slug}"
+        bashio::log.notice "[dry_run] Would inspect and stop app if running: ${slug}"
         return 0
     fi
 
     if ! state="$(addon_state "${slug}")"; then
-        bashio::log.warning "Could not inspect add-on '${slug}'; will try to stop it and restart it later."
+        bashio::log.warning "Could not inspect app '${slug}'; will try to stop it and restart it later."
         stop_addon "${slug}" || true
         return 0
     fi
 
     if [[ "${state}" != "started" ]]; then
-        bashio::log.info "Add-on '${slug}' is '${state:-unknown}', so it will not be stopped or restarted."
+        bashio::log.info "App '${slug}' is '${state:-unknown}', so it will not be stopped or restarted."
         return 1
     fi
 
@@ -325,48 +325,48 @@ stop_addon_if_running() {
 }
 
 # -----------------------------------------------------------------------------
-# Start a single add-on by slug.
+# Start a single app by slug.
 # -----------------------------------------------------------------------------
 start_addon() {
     local slug="${1}"
 
     if bashio::config.true 'dry_run'; then
-        bashio::log.notice "[dry_run] Would start add-on: ${slug}"
+        bashio::log.notice "[dry_run] Would start app: ${slug}"
         return 0
     fi
 
-    bashio::log.info "Starting add-on: ${slug}"
+    bashio::log.info "Starting app: ${slug}"
     if ! supervisor_api "POST" "/addons/${slug}/start"; then
-        bashio::log.warning "Failed to start add-on: ${slug}"
+        bashio::log.warning "Failed to start app: ${slug}"
     fi
 }
 
 # -----------------------------------------------------------------------------
-# Start an add-on only if it is currently stopped.
-# Returns 0 when the add-on should be stopped at the end of the window.
+# Start an app only if it is currently stopped.
+# Returns 0 when the app should be stopped at the end of the window.
 # -----------------------------------------------------------------------------
 start_addon_if_stopped() {
     local slug="${1}"
     local state
 
     if addon_is_self "${slug}"; then
-        bashio::log.info "Add-on '${slug}' is already running because it is this add-on."
+        bashio::log.info "App '${slug}' is already running because it is Maintenance Window."
         return 1
     fi
 
     if bashio::config.true 'dry_run'; then
-        bashio::log.notice "[dry_run] Would inspect and start add-on if stopped: ${slug}"
+        bashio::log.notice "[dry_run] Would inspect and start app if stopped: ${slug}"
         return 0
     fi
 
     if ! state="$(addon_state "${slug}")"; then
-        bashio::log.warning "Could not inspect add-on '${slug}'; will try to start it and stop it later."
+        bashio::log.warning "Could not inspect app '${slug}'; will try to start it and stop it later."
         start_addon "${slug}" || true
         return 0
     fi
 
     if [[ "${state}" == "started" ]]; then
-        bashio::log.info "Add-on '${slug}' is already started, so it will not be stopped at the end of the window."
+        bashio::log.info "App '${slug}' is already started, so it will not be stopped at the end of the window."
         return 1
     fi
 
@@ -534,7 +534,7 @@ write_window_state() {
 }
 
 # -----------------------------------------------------------------------------
-# Restore Core/add-ons from the persisted active-window state.
+# Restore Core/apps from the persisted active-window state.
 # -----------------------------------------------------------------------------
 restore_window_from_state() {
     local should_start_core
@@ -569,26 +569,26 @@ restore_window_from_state() {
 }
 
 # -----------------------------------------------------------------------------
-# Restore services if the add-on is terminated during an active window.
+# Restore services if the app is terminated during an active window.
 # -----------------------------------------------------------------------------
 handle_shutdown() {
     local signal_name="${1:-signal}"
 
-    bashio::log.warning "Maintenance Window add-on received ${signal_name}; checking for active restore state."
+    bashio::log.warning "Maintenance Window app received ${signal_name}; checking for active restore state."
     restore_window_from_state
     exit 0
 }
 
 # -----------------------------------------------------------------------------
-# Enter the maintenance window: start/stop add-ons + core, hold, then restore.
+# Enter the maintenance window: start/stop apps + Core, hold, then restore.
 # Argument: window duration in minutes.
 #
 # Order of operations:
-#   1. Start temporary add-ons that should be available during the window.
-#   2. Stop selected add-ons first (they may depend on Core).
+#   1. Start temporary apps that should be available during the window.
+#   2. Stop selected apps first (they may depend on Core).
 #   3. Stop Core.
 #   4. Sleep for the window duration.
-#   5. Start Core and stopped add-ons, then stop temporary add-ons.
+#   5. Start Core and stopped apps, then stop temporary apps.
 # -----------------------------------------------------------------------------
 run_maintenance_window() {
     local duration_minutes="${1}"
@@ -602,7 +602,7 @@ run_maintenance_window() {
 
     bashio::log.notice "=== Entering maintenance window: ${name} (${duration_minutes} min) ==="
 
-    # 1: start add-ons that should be temporarily available during the window.
+    # 1: start apps that should be temporarily available during the window.
     while IFS= read -r slug; do
         [[ -z "${slug}" ]] && continue
         if start_addon_if_stopped "${slug}"; then
@@ -795,14 +795,14 @@ next_window() {
 # Main loop.
 # -----------------------------------------------------------------------------
 main() {
-    bashio::log.info "Maintenance Window add-on started."
+    bashio::log.info "Maintenance Window app started."
     bashio::log.info "dry_run=$(bashio::config 'dry_run'), restart_core=$(bashio::config 'restart_core')"
 
     trap 'handle_shutdown INT' INT
     trap 'handle_shutdown TERM' TERM
 
     if bashio::config.true 'dry_run'; then
-        bashio::log.notice "DRY RUN mode is enabled — no add-ons or Core will actually be stopped."
+        bashio::log.notice "DRY RUN mode is enabled — no apps or Core will actually be stopped."
     fi
 
     restore_window_from_state

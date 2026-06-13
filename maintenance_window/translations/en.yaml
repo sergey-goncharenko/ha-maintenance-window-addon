@@ -2,20 +2,20 @@ configuration:
   log_level:
     name: Log level
     description: >-
-      Controls how much detail the add-on writes to its log. Use debug or trace
+      Controls how much detail the app writes to its log. Use debug or trace
       while testing your schedule, info for normal operation.
   dry_run:
     name: Dry run
     description: >-
-      When enabled, the add-on only logs what it would do and never actually
-      stops or starts Home Assistant Core or any add-on. Great for validating a
+      When enabled, the app only logs what it would do and never actually
+      stops or starts Home Assistant Core or any app. Great for validating a
       schedule safely.
   restart_core:
     name: Default Core stop/restart
     description: >-
       Default used by windows that do not set their own Core action. When
       enabled, Home Assistant Core is stopped at the start of the window and
-      started again at the end. Disable to only cycle the selected add-ons.
+      started again at the end. Disable to only cycle the selected apps.
   core_stop_confirmation:
     name: Core stop confirmation
     description: >-
@@ -25,14 +25,14 @@ configuration:
   startup_grace_seconds:
     name: Startup grace period
     description: >-
-      Number of seconds after this add-on starts during which Home Assistant Core
+      Number of seconds after this app starts during which Home Assistant Core
       may not be stopped. This helps prevent lockout from an accidental schedule
-      immediately after boot or add-on restart.
+      immediately after boot or app restart.
   max_core_stop_minutes:
     name: Maximum Core stop duration
     description: >-
       Maximum maintenance window duration that is allowed to stop Home Assistant
-      Core. Longer windows can still start/stop add-ons, but Core stays running.
+      Core. Longer windows can still start/stop apps, but Core stays running.
   core_start_timeout_seconds:
     name: Core start readiness timeout
     description: >-
@@ -46,50 +46,50 @@ configuration:
       Window intentionally stops and starts Core, then restores the previous
       watchdog setting after Core is restored.
   list_addons_on_startup:
-    name: List installed add-ons on startup
+    name: List installed apps on startup
     description: >-
-      When enabled, writes a copyable Supervisor add-on inventory to the add-on
-      config folder and logs each add-on slug. This helps fill stop/start lists.
+      When enabled, writes a copyable Supervisor app inventory to the app config
+      folder and logs each app slug. This helps fill stop/start lists.
   stop_addons:
-    name: Default add-ons to stop
+    name: Default apps to stop
     description: >-
-      Default list used by windows that do not set their own stop list. Add-ons
+      Default list used by windows that do not set their own stop list. Apps
       are started again when the window ends. Leave empty to only affect Core.
   start_addons:
-    name: Default add-ons to start temporarily
+    name: Default apps to start temporarily
     description: >-
-      Default list used by windows that do not set their own start list. Add-ons
-      already running are left running; add-ons started by this scheduler are
+      Default list used by windows that do not set their own start list. Apps
+      already running are left running; apps started by this scheduler are
       stopped again when the window ends.
   windows:
     name: Maintenance windows
     description: >-
-      One or more scheduled windows describing when Core/add-ons should be
+      One or more scheduled windows describing when Core/apps should be
       stopped and for how long.
     fields:
       name:
         name: Window name
-        description: A friendly label shown in the add-on log.
+        description: A friendly label shown in the app log.
       start_time:
         name: Start time
         description: 24-hour local time (HH:MM) when the window begins.
       duration_minutes:
         name: Duration (minutes)
-        description: How long Core and the selected add-ons stay stopped (1-1440).
+        description: How long Core and the selected apps stay stopped (1-1440).
       restart_core:
         name: Stop & restart Home Assistant Core
         description: >-
           Optional per-window override. Use this when one window should stop Core
           and another should not.
       stop_addons:
-        name: Add-ons to stop
+        name: Apps to stop
         description: >-
           Optional per-window override. Use this when one window should stop a
-          different add-on set than the defaults.
+          different app set than the defaults.
       start_addons:
-        name: Add-ons to start temporarily
+        name: Apps to start temporarily
         description: >-
-          Optional per-window override. Use this to open SSH or another add-on
+          Optional per-window override. Use this to open SSH or another app
           during this window, even while Core is down.
       days:
         name: Days

@@ -1,5 +1,5 @@
 name: Configuration help
-description: Ask for help configuring windows or add-on slugs
+description: Ask for help configuring windows or app slugs
 title: "[Config]: "
 labels:
   - question
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Tip: Maintenance Window logs installed Supervisor add-on slugs on startup when `list_addons_on_startup` is enabled. You can copy slugs such as `a0d7b954_ssh` from the add-on log or `/addon_config/available_addons.md`.
+        Tip: Maintenance Window logs installed Supervisor app slugs on startup when `list_addons_on_startup` is enabled. You can copy slugs such as `a0d7b954_ssh` from the app log or `/addon_config/available_addons.md`.
   - type: textarea
     id: goal
     attributes:
@@ -27,7 +27,7 @@ body:
     id: startup_log
     attributes:
       label: Startup slug inventory log
-      description: Optional. Paste the startup lines that list installed add-ons.
+      description: Optional. Paste the startup lines that list installed apps.
       render: text
     validations:
       required: false

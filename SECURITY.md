@@ -1,6 +1,6 @@
 # Security Policy
 
-Maintenance Window can stop and start Home Assistant Core and Supervisor add-ons. Please treat reports that could cause unexpected Core downtime, failure to restore Core, privilege escalation, or exposure of Supervisor tokens as security-sensitive.
+Maintenance Window can stop and start Home Assistant Core and Supervisor apps. Please treat reports that could cause unexpected Core downtime, failure to restore Core, privilege escalation, or exposure of Supervisor tokens as security-sensitive.
 
 ## Supported versions
 
@@ -16,4 +16,4 @@ If the issue is not sensitive, open a normal GitHub issue and include logs/confi
 
 - Share the minimum details needed to reproduce the issue.
 - Redact `SUPERVISOR_TOKEN`, secrets, private URLs, and personal Home Assistant data.
-- Include the add-on version, Home Assistant Core version, Supervisor version, and HAOS version when possible.
+- Include the app version, Home Assistant Core version, Supervisor version, and HAOS version when possible.

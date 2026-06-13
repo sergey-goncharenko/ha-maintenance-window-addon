@@ -3,6 +3,11 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.7
+
+- Update public-facing terminology from add-ons to apps while preserving legacy
+  configuration keys such as `stop_addons` and `start_addons`.
+
 ## 0.8.6
 
 - Allow window `days` to be empty or omitted; such windows now run every day.

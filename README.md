@@ -1,14 +1,14 @@
-# Maintenance Window HA Add-on Repository
+# Maintenance Window HA App Repository
 
 [![CI](https://github.com/sergey-goncharenko/ha-maintenance-window-addon/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sergey-goncharenko/ha-maintenance-window-addon/actions/workflows/ci.yml?query=branch%3Amain)
 
-A Home Assistant add-on repository containing the **Maintenance Window** add-on.
+A Home Assistant app repository containing the **Maintenance Window** app.
 
 ## What it does
 
 Maintenance Window provides controlled quiet windows for Home Assistant OS. At a
 configured time it can gracefully **stop Home Assistant Core** and selected
-add-ons, temporarily **start selected add-ons**, hold that state for a short
+apps, temporarily **start selected apps**, hold that state for a short
 window, and then automatically restore everything when the window ends.
 
 It is designed for maintenance that happens around Home Assistant, not only
@@ -22,12 +22,17 @@ Typical use cases:
 - Reduce automation noise / device polling during the night.
 - Pause Core while internet, router, NAS, sensor, or attached hardware work is in progress.
 - Force a clean, scheduled restart of Core on a regular cadence.
-- Temporarily open an add-on such as SSH for a short break-glass access window.
-- Use different Core/add-on actions for different scheduled windows.
+- Temporarily open an app such as SSH for a short break-glass access window.
+- Use different Core/app actions for different scheduled windows.
 
-Unlike Home Assistant automations, this add-on runs independently from Home
-Assistant Core. That means it can still perform scheduled add-on actions when
+Unlike Home Assistant automations, this app runs independently from Home
+Assistant Core. That means it can still perform scheduled app actions when
 Core is stopped, broken, overloaded, or unresponsive.
+
+Home Assistant now generally calls Supervisor-managed packages **apps**. Some
+configuration keys still use the legacy `addons` name (`stop_addons`,
+`start_addons`, `list_addons_on_startup`) for compatibility and because they map
+to Supervisor API paths.
 
 ## Quick start
 
@@ -86,31 +91,31 @@ core_stop_confirmation: "STOP_CORE"
 
 ![Emergency SSH window configuration](docs/screenshots/config-emergency-ssh-daily.png)
 
-## Add-ons in this repository
+## Apps in this repository
 
-| Add-on | Description |
+| App | Description |
 | ------ | ----------- |
-| [Maintenance Window](./maintenance_window) | Scheduled quiet mode that stops & restarts Core and selected add-ons. |
+| [Maintenance Window](./maintenance_window) | Scheduled quiet mode that stops & restarts Core and selected apps. |
 
 ## Installation
 
-1. In Home Assistant, go to **Settings → Add-ons → Add-on Store**.
+1. In Home Assistant, go to **Settings → Apps** (formerly **Add-ons**).
 2. Click the **⋮** menu (top right) → **Repositories**.
 3. Add `https://github.com/sergey-goncharenko/ha-maintenance-window-addon`.
 4. Find **Maintenance Window** in the store and install it.
 
-See the add-on's [documentation](./maintenance_window/DOCS.md) for configuration.
+See the app's [documentation](./maintenance_window/DOCS.md) for configuration.
 
-The add-on uses a prebuilt multi-architecture image published to GHCR, so HAOS
+The app uses a prebuilt multi-architecture image published to GHCR, so HAOS
 should pull the image during installation instead of building it locally.
 
-## Finding add-on slugs
+## Finding app slugs
 
-Maintenance Window uses Supervisor add-on slugs, such as `a0d7b954_ssh` or
+Maintenance Window uses Supervisor app slugs, such as `a0d7b954_ssh` or
 `0d869efa_prometheus_node_exporter`, in `stop_addons` and `start_addons`.
 
 The easiest way to find them is to keep `list_addons_on_startup: true` and open
-the Maintenance Window log after the add-on starts. It logs installed add-ons in
+the Maintenance Window log after the app starts. It logs installed apps in
 this format:
 
 ```text
@@ -125,28 +130,28 @@ inventory is also written to `/addon_config/available_addons.md`.
 
 The default configuration is non-mutating: `dry_run` is enabled and Core restarts
 are disabled. To allow Home Assistant Core to be stopped, you must explicitly set
-`restart_core: true` and `core_stop_confirmation: STOP_CORE`. The add-on also
+`restart_core: true` and `core_stop_confirmation: STOP_CORE`. The app also
 blocks Core stops during a startup grace period and blocks windows longer than
 the configured maximum Core stop duration. During intentional Core stop/start
 windows, it can temporarily pause the Home Assistant Core watchdog and restores
 the previous watchdog setting after Core recovery.
 
-> ⚠️ This add-on can stop Home Assistant Core. While Core is stopped, automations,
-> the UI, and integrations are unavailable. The add-on itself runs independently
+> ⚠️ This app can stop Home Assistant Core. While Core is stopped, automations,
+> the UI, and integrations are unavailable. The app itself runs independently
 > of Core and is responsible for starting Core again at the end of the window.
 
 ## Development note
 
 This project was developed with AI assistance, with human review and iterative
 testing throughout. It has been personally tested on a real Home Assistant OS
-setup, including dry-run validation, real Core stop/start windows, add-on
+setup, including dry-run validation, real Core stop/start windows, app
 stop/start restore, watchdog pause/restore, and recovery behavior. Even so,
 please test carefully on your own system before relying on it for unattended
 maintenance.
 
 ## Recovery
 
-If a test behaves unexpectedly, disable Watchdog first, then stop the add-on from
+If a test behaves unexpectedly, disable Watchdog first, then stop the app from
 the HAOS console or SSH:
 
 ```bash
