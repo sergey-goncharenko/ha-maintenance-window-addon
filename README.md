@@ -76,6 +76,16 @@ dry_run: false
 core_stop_confirmation: "STOP_CORE"
 ```
 
+## Screenshots
+
+### Nightly Core maintenance
+
+![Nightly maintenance window configuration](docs/screenshots/config-nightly-maintenance.png)
+
+### Daily emergency SSH window
+
+![Emergency SSH window configuration](docs/screenshots/config-emergency-ssh-daily.png)
+
 ## Add-ons in this repository
 
 | Add-on | Description |
