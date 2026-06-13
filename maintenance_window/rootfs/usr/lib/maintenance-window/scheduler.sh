@@ -687,10 +687,16 @@ window_runs_on_day() {
     local window_index="${1}"
     local day_name="${2}"
     local configured_day
+    local configured_days
+
+    configured_days="$(bashio::config "windows[${window_index}].days" '__all__')"
+    if [[ "${configured_days}" == "__all__" || -z "${configured_days}" ]]; then
+        return 0
+    fi
 
     while IFS= read -r configured_day; do
         [[ "${configured_day}" == "${day_name}" ]] && return 0
-    done < <(bashio::config "windows[${window_index}].days")
+    done <<< "${configured_days}"
 
     return 1
 }

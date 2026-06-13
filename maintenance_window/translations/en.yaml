@@ -93,4 +93,6 @@ configuration:
           during this window, even while Core is down.
       days:
         name: Days
-        description: Days of the week this window runs (mon through sun).
+        description: >-
+          Days of the week this window runs (mon through sun). Leave empty to
+          run every day.

@@ -247,7 +247,9 @@ A list of maintenance windows. Each entry has:
 | `restart_core` | Optional per-window Core stop/restart override. |
 | `stop_addons` | Optional per-window list of add-ons to stop. |
 | `start_addons` | Optional per-window list of add-ons to start temporarily. |
-| `days` | Days of week the window runs (`mon`–`sun`). |
+| `days` | Optional days of week the window runs (`mon`–`sun`). Leave empty or omit it to run every day. |
+
+If `days` is empty or omitted, the window runs every day.
 
 If a window omits `restart_core`, `stop_addons`, or `start_addons`, the global
 setting with the same name is used.

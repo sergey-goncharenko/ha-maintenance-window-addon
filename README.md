@@ -67,6 +67,8 @@ windows:
 			- sun
 ```
 
+Leave `days` empty or omit it from a window to run that window every day.
+
 After dry-run testing, enable real Core stop with:
 
 ```yaml
