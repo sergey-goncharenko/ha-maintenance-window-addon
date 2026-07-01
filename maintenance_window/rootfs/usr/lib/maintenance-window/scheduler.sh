@@ -233,13 +233,8 @@ window_restart_core_enabled() {
             return 1
             ;;
         __missing__)
-            if window_has_app_action_override "${window_index}"; then
-                bashio::log.info "Window restart_core is not set but app actions are overridden; leaving Core running."
-                return 1
-            fi
-
-            bashio::config.true 'restart_core'
-            return $?
+            bashio::log.info "Window restart_core is not set; leaving Core running."
+            return 1
             ;;
         *)
             bashio::log.warning "Window restart_core has unexpected value '${value}'; leaving Core running."

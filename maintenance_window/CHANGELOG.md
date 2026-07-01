@@ -3,6 +3,13 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.9
+
+- Make per-window `restart_core` optional again so existing saved
+  configurations continue to load after update.
+- Treat missing per-window `restart_core` as disabled instead of falling back to
+  the global Core restart default.
+
 ## 0.8.8
 
 - Make per-window `restart_core` explicit so app-only windows such as temporary
