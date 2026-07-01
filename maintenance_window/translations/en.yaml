@@ -79,8 +79,8 @@ configuration:
       restart_core:
         name: Stop & restart Home Assistant Core
         description: >-
-          Optional per-window override. Use this when one window should stop Core
-          and another should not.
+          Explicit per-window setting. Turn on only for windows that should stop
+          Core. Leave off for app-only windows such as temporary SSH access.
       stop_addons:
         name: Apps to stop
         description: >-

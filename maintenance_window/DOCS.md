@@ -109,8 +109,13 @@ starts anything. Use this to validate your schedule safely before going live.
 When `true`, Home Assistant Core is stopped during the window and restarted
 afterward. Set to `false` if you only want to cycle apps.
 
-The global value is a default. A window can override it with its own
-`restart_core` value.
+Set `restart_core` on each window that should stop Core. Leave it off for
+app-only windows, such as temporary SSH access.
+
+For compatibility with older configurations, the global value can still be used
+as a fallback for windows that do not define their own app actions. For safety,
+if a window defines per-window `stop_addons` or `start_addons` but omits
+`restart_core`, Core is left running.
 
 For safety, this option is not enough on its own. Core is only stopped when
 `restart_core` is `true`, `core_stop_confirmation` is set exactly to
@@ -213,12 +218,15 @@ startup_grace_seconds: 300
 max_core_stop_minutes: 60
 list_addons_on_startup: true
 stop_addons: []
-start_addons:
-  - core_ssh
+start_addons: []
 windows:
   - name: Temporary SSH access
     start_time: "01:00"
     duration_minutes: 30
+    restart_core: false
+    stop_addons: []
+    start_addons:
+      - core_ssh
     days:
       - mon
       - tue
@@ -268,15 +276,16 @@ A list of maintenance windows. Each entry has:
 | `name` | Friendly label used in logs. |
 | `start_time` | 24-hour `HH:MM` local time the window begins. |
 | `duration_minutes` | How long Core/apps stay stopped (1–1440). |
-| `restart_core` | Optional per-window Core stop/restart override. |
+| `restart_core` | Explicit per-window Core stop/restart setting. Leave off for app-only windows. |
 | `stop_addons` | Optional per-window list of apps to stop. |
 | `start_addons` | Optional per-window list of apps to start temporarily. |
 | `days` | Optional days of week the window runs (`mon`–`sun`). Leave empty or omit it to run every day. |
 
 If `days` is empty or omitted, the window runs every day.
 
-If a window omits `restart_core`, `stop_addons`, or `start_addons`, the global
-setting with the same name is used.
+If a window omits `stop_addons` or `start_addons`, the global setting with the
+same name is used. `restart_core` should be set explicitly per window; app-only
+windows should leave it off.
 
 Example with two different window actions:
 

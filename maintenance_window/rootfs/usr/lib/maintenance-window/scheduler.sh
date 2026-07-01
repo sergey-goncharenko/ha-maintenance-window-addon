@@ -198,20 +198,54 @@ config_int() {
 }
 
 # -----------------------------------------------------------------------------
-# Read a boolean config value that can fall back from a window field to a global.
+# Return true when this window defines app action overrides.
 # -----------------------------------------------------------------------------
-config_true_with_fallback() {
-    local window_key="${1}"
-    local global_key="${2}"
+window_has_app_action_override() {
+    local window_index="${1}"
     local value
 
-    value="$(bashio::config "${window_key}" '__missing__')"
-    if [[ "${value}" == "__missing__" ]]; then
-        bashio::config.true "${global_key}"
-        return $?
+    value="$(bashio::config "windows[${window_index}].stop_addons" '__missing__')"
+    if [[ "${value}" != "__missing__" ]]; then
+        return 0
     fi
 
-    [[ "${value}" == "true" ]]
+    value="$(bashio::config "windows[${window_index}].start_addons" '__missing__')"
+    if [[ "${value}" != "__missing__" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Return true when this window should stop Core.
+# -----------------------------------------------------------------------------
+window_restart_core_enabled() {
+    local window_index="${1}"
+    local value
+
+    value="$(bashio::config "windows[${window_index}].restart_core" '__missing__')"
+    case "${value}" in
+        true)
+            return 0
+            ;;
+        false|"")
+            return 1
+            ;;
+        __missing__)
+            if window_has_app_action_override "${window_index}"; then
+                bashio::log.info "Window restart_core is not set but app actions are overridden; leaving Core running."
+                return 1
+            fi
+
+            bashio::config.true 'restart_core'
+            return $?
+            ;;
+        *)
+            bashio::log.warning "Window restart_core has unexpected value '${value}'; leaving Core running."
+            return 1
+            ;;
+    esac
 }
 
 # -----------------------------------------------------------------------------
@@ -242,7 +276,7 @@ should_stop_core_for_window() {
     local max_core_stop_minutes
     local uptime_seconds
 
-    if ! config_true_with_fallback "windows[${window_index}].restart_core" 'restart_core'; then
+    if ! window_restart_core_enabled "${window_index}"; then
         bashio::log.info "restart_core is disabled; leaving Core running."
         return 1
     fi

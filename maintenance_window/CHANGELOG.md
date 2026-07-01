@@ -3,6 +3,13 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.8
+
+- Make per-window `restart_core` explicit so app-only windows such as temporary
+  SSH access do not fall back to a global Core restart setting.
+- Treat missing per-window `restart_core` as disabled when that window defines
+  app action overrides.
+
 ## 0.8.7
 
 - Update public-facing terminology from add-ons to apps while preserving legacy
