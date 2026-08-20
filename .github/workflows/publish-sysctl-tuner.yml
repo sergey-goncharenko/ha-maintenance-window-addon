@@ -1,0 +1,70 @@
+name: Publish Sysctl Tuner Image
+
+# Mirrors .github/workflows/publish-image.yml (the Maintenance Window add-on),
+# so both add-ons in this repository are built the same way: multi-arch via
+# QEMU + buildx on GitHub-hosted runners, pushed to GHCR.
+#
+# Why this matters for this particular add-on: the target host is a 1 GB
+# Raspberry Pi whose I/O is already saturated. Building the image *on the
+# device* reliably stalls it (three watchdog resets were induced that way on
+# 2026-08-20). Publishing a prebuilt image means Supervisor only has to PULL a
+# ~4 MB Alpine layer instead of running buildx locally.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - sysctl_tuner/**
+      - .github/workflows/publish-sysctl-tuner.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Publish add-on image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read add-on version
+        id: version
+        run: |
+          version="$(python -c 'import json; print(json.load(open("sysctl_tuner/config.json"))["version"])')"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: sysctl_tuner
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            BUILD_ARCH=multi
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            BUILD_DESCRIPTION=Kernel VM Tuner
+            BUILD_NAME=Kernel VM Tuner
+            BUILD_REF=${{ github.sha }}
+            BUILD_REPOSITORY=${{ github.repository }}
+            BUILD_VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            ghcr.io/sergey-goncharenko/sysctl-tuner-addon:${{ steps.version.outputs.version }}
+            ghcr.io/sergey-goncharenko/sysctl-tuner-addon:latest
