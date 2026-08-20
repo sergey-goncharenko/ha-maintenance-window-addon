@@ -1,6 +1,6 @@
 {
   "name": "Kernel VM Tuner",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "slug": "sysctl_tuner",
   "description": "Applies kernel virtual-memory sysctls at boot (swappiness, reclaim watermarks, free-memory reserve) on memory-constrained Home Assistant OS hosts.",
   "url": "https://github.com/sergey-goncharenko/ha-maintenance-window-addon/tree/main/sysctl_tuner",
@@ -13,6 +13,7 @@
   "startup": "initialize",
   "boot": "auto",
   "full_access": true,
+  "apparmor": false,
   "options": {
     "log_level": "info",
     "dry_run": true,
