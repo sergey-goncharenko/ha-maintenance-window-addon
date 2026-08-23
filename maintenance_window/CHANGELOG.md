@@ -3,6 +3,20 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.9.0
+
+- Make interrupted restores crash-safe by atomically consuming each completed
+  Core, app, and watchdog action from persisted recovery state.
+- Skip restore actions whose target is already in the requested state, so a
+  stale record cannot restart an already-running Home Assistant Core.
+- Persist each window's absolute end time and resume its remaining duration
+  after an app restart; clean expired and legacy state in start-only mode.
+- Bound failed restore passes to three attempts before clearing state and
+  returning to normal scheduling.
+- Add `restore_stagger_seconds` (default `15`) and wait for each app to report
+  started before restoring the next, reducing memory and storage I/O spikes.
+- Retry stalled Supervisor state queries with bounded backoff.
+
 ## 0.8.9
 
 - Make per-window `restart_core` optional again so existing saved

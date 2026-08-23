@@ -39,6 +39,11 @@ configuration:
       Number of seconds to wait for the Home Assistant Core API to respond after
       starting Core. This keeps the restore phase open while Core is still
       booting or being restarted by Supervisor health checks.
+  restore_stagger_seconds:
+    name: Delay between app restores
+    description: >-
+      Number of seconds to wait before each app is restored after Core is ready.
+      Staggering reduces simultaneous memory and storage I/O pressure.
   pause_core_watchdog:
     name: Pause Core watchdog during windows
     description: >-

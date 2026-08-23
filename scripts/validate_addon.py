@@ -139,6 +139,7 @@ def validate_safety_defaults(config: dict) -> None:
         "core_stop_confirmation": "",
         "startup_grace_seconds": 300,
         "max_core_stop_minutes": 60,
+        "restore_stagger_seconds": 15,
     }
 
     for key, value in expected.items():
@@ -168,6 +169,7 @@ def validate_line_endings() -> None:
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "run",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "finish",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "type",
+        ROOT / "scripts" / "test_scheduler_restore.sh",
     ]
     apparmor_file = ADDON / "apparmor.txt"
     if apparmor_file.exists():

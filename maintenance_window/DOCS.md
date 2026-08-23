@@ -70,6 +70,7 @@ core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
 core_start_timeout_seconds: 600
+restore_stagger_seconds: 15
 pause_core_watchdog: true
 list_addons_on_startup: true
 stop_addons:
@@ -145,6 +146,26 @@ This wait happens during restore, after Core has been started. It does not keep
 Core stopped longer; it keeps Maintenance Window from declaring the restore
 complete while Core is still booting or being restarted by Supervisor health
 checks. Set to `0` to disable the readiness wait.
+
+### Option: `restore_stagger_seconds`
+
+Number of seconds to wait before each app is restored after Core is ready. The
+default is `15`; accepted values are `0` through `300`. Apps are restored one
+at a time and must report `started` before the next app begins. Waiting before
+each pending app preserves the stagger even if Maintenance Window itself is
+restarted. This reduces simultaneous memory allocation and storage I/O during
+recovery.
+
+Restore progress is saved after Core and after each app reaches its expected
+state. If Maintenance Window is interrupted, it resumes with only the pending
+actions. An active window waits until its original end time. An expired or
+legacy state file gets one restore-only cleanup pass: Core and previously
+stopped apps may be started, but nothing is stopped, and the stale file is then
+removed even if an action fails.
+
+Failed restore passes are limited to three attempts. After that, the app logs
+an error, clears the recovery state to prevent a restart loop, and returns to
+normal scheduling.
 
 ### Option: `pause_core_watchdog`
 

@@ -30,9 +30,18 @@ readonly SUPERVISOR_API="http://supervisor"
 readonly HOMEASSISTANT_API="${SUPERVISOR_API}/core/api"
 readonly ADDON_SLUG="maintenance_window"
 readonly NO_WINDOW_SLEEP_SECONDS="300"
-readonly WINDOW_STATE_FILE="/data/maintenance-window-state.json"
+readonly WINDOW_STATE_FILE="${WINDOW_STATE_FILE:-/data/maintenance-window-state.json}"
 readonly ADDON_INVENTORY_FILE="/addon_config/available_addons.md"
+readonly SUPERVISOR_CONNECT_TIMEOUT_SECONDS="5"
+readonly SUPERVISOR_REQUEST_TIMEOUT_SECONDS="15"
+readonly STATE_QUERY_MAX_ATTEMPTS="5"
+readonly STATE_QUERY_INITIAL_BACKOFF_SECONDS="2"
+readonly STATE_QUERY_MAX_BACKOFF_SECONDS="30"
 readonly CORE_READY_POLL_SECONDS="5"
+readonly ADDON_STATE_TIMEOUT_SECONDS="300"
+readonly WINDOW_SLEEP_SLICE_SECONDS="15"
+readonly MAX_RESTORE_ATTEMPTS="3"
+readonly RESTORE_PASS_RETRY_SECONDS="15"
 STARTED_AT_EPOCH="$(date +%s)"
 readonly STARTED_AT_EPOCH
 
@@ -57,6 +66,8 @@ supervisor_api() {
     local path="${2}"
 
     curl --silent --show-error --fail \
+        --connect-timeout "${SUPERVISOR_CONNECT_TIMEOUT_SECONDS}" \
+        --max-time "${SUPERVISOR_REQUEST_TIMEOUT_SECONDS}" \
         --request "${method}" \
         --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         --header "Content-Type: application/json" \
@@ -73,6 +84,8 @@ supervisor_api_json() {
     local payload="${3}"
 
     curl --silent --show-error --fail \
+        --connect-timeout "${SUPERVISOR_CONNECT_TIMEOUT_SECONDS}" \
+        --max-time "${SUPERVISOR_REQUEST_TIMEOUT_SECONDS}" \
         --request "${method}" \
         --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         --header "Content-Type: application/json" \
@@ -90,6 +103,8 @@ homeassistant_api() {
     local path="${2}"
 
     curl --silent --fail --output /dev/null \
+        --connect-timeout "${SUPERVISOR_CONNECT_TIMEOUT_SECONDS}" \
+        --max-time "${SUPERVISOR_REQUEST_TIMEOUT_SECONDS}" \
         --request "${method}" \
         --header "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
         --header "Content-Type: application/json" \
@@ -105,6 +120,51 @@ addon_state() {
 
     response="$(supervisor_api "GET" "/addons/${slug}/info")"
     jq --raw-output '.data.state // empty' <<< "${response}"
+}
+
+# -----------------------------------------------------------------------------
+# Return the Supervisor state for Home Assistant Core, such as "running".
+# -----------------------------------------------------------------------------
+core_state() {
+    local response
+
+    response="$(supervisor_api "GET" "/core/info")"
+    jq --raw-output '.data.state // empty' <<< "${response}"
+}
+
+# -----------------------------------------------------------------------------
+# Retry a Supervisor state query with bounded exponential backoff.
+# Query functions must print the state to stdout.
+# -----------------------------------------------------------------------------
+supervisor_state_with_backoff() {
+    local description="${1}"
+    local query_function="${2}"
+    shift 2
+
+    local attempt=1
+    local backoff_seconds="${STATE_QUERY_INITIAL_BACKOFF_SECONDS}"
+    local state
+
+    while (( attempt <= STATE_QUERY_MAX_ATTEMPTS )); do
+        if state="$("${query_function}" "$@")" && [[ -n "${state}" ]]; then
+            printf '%s\n' "${state}"
+            return 0
+        fi
+
+        if (( attempt < STATE_QUERY_MAX_ATTEMPTS )); then
+            bashio::log.warning "Supervisor did not answer the ${description} query; retrying in ${backoff_seconds}s (attempt ${attempt}/${STATE_QUERY_MAX_ATTEMPTS})." >&2
+            sleep "${backoff_seconds}"
+            backoff_seconds="$(( backoff_seconds * 2 ))"
+            if (( backoff_seconds > STATE_QUERY_MAX_BACKOFF_SECONDS )); then
+                backoff_seconds="${STATE_QUERY_MAX_BACKOFF_SECONDS}"
+            fi
+        fi
+
+        attempt="$(( attempt + 1 ))"
+    done
+
+    bashio::log.error "Supervisor did not answer the ${description} query after ${STATE_QUERY_MAX_ATTEMPTS} attempts." >&2
+    return 1
 }
 
 # -----------------------------------------------------------------------------
@@ -317,7 +377,10 @@ stop_addon() {
     bashio::log.info "Stopping app: ${slug}"
     if ! supervisor_api "POST" "/addons/${slug}/stop"; then
         bashio::log.warning "Failed to stop app: ${slug}"
+        return 1
     fi
+
+    return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -367,7 +430,99 @@ start_addon() {
     bashio::log.info "Starting app: ${slug}"
     if ! supervisor_api "POST" "/addons/${slug}/start"; then
         bashio::log.warning "Failed to start app: ${slug}"
+        return 1
     fi
+
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# Wait for an app to reach a desired state without hammering Supervisor during
+# host-wide I/O stalls.
+# -----------------------------------------------------------------------------
+wait_for_addon_state() {
+    local slug="${1}"
+    local desired_state="${2}"
+    local deadline="$(( $(date +%s) + ADDON_STATE_TIMEOUT_SECONDS ))"
+    local backoff_seconds="${STATE_QUERY_INITIAL_BACKOFF_SECONDS}"
+    local state
+
+    while (( $(date +%s) < deadline )); do
+        if state="$(addon_state "${slug}")" && [[ -n "${state}" ]]; then
+            if [[ "${state,,}" == "${desired_state,,}" ]]; then
+                bashio::log.info "App '${slug}' reached state '${desired_state}'."
+                return 0
+            fi
+        else
+            bashio::log.warning "Supervisor did not answer while waiting for app '${slug}' to become '${desired_state}'; retrying in ${backoff_seconds}s."
+        fi
+
+        sleep "${backoff_seconds}"
+        backoff_seconds="$(( backoff_seconds * 2 ))"
+        if (( backoff_seconds > STATE_QUERY_MAX_BACKOFF_SECONDS )); then
+            backoff_seconds="${STATE_QUERY_MAX_BACKOFF_SECONDS}"
+        fi
+    done
+
+    bashio::log.error "App '${slug}' did not reach state '${desired_state}' within ${ADDON_STATE_TIMEOUT_SECONDS}s."
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Idempotent app actions used only by the persisted restore state machine.
+# -----------------------------------------------------------------------------
+restore_start_addon() {
+    local slug="${1}"
+    local state
+
+    if addon_is_self "${slug}"; then
+        bashio::log.info "Skipping restore start for '${slug}' because Maintenance Window is already running."
+        return 0
+    fi
+
+    if bashio::config.true 'dry_run'; then
+        bashio::log.notice "[dry_run] Would inspect and start app if needed: ${slug}"
+        return 0
+    fi
+
+    if ! state="$(supervisor_state_with_backoff "state for app '${slug}'" addon_state "${slug}")"; then
+        return 1
+    fi
+
+    if [[ "${state,,}" == "started" ]]; then
+        bashio::log.info "App '${slug}' is already started; skipping start."
+        return 0
+    fi
+
+    start_addon "${slug}" || bashio::log.warning "Start request for app '${slug}' was not acknowledged; checking its state before retrying."
+    wait_for_addon_state "${slug}" "started"
+}
+
+restore_stop_addon() {
+    local slug="${1}"
+    local state
+
+    if addon_is_self "${slug}"; then
+        bashio::log.warning "Skipping restore stop for '${slug}' because Maintenance Window must not stop itself."
+        return 0
+    fi
+
+    if bashio::config.true 'dry_run'; then
+        bashio::log.notice "[dry_run] Would inspect and stop app if needed: ${slug}"
+        return 0
+    fi
+
+    if ! state="$(supervisor_state_with_backoff "state for app '${slug}'" addon_state "${slug}")"; then
+        return 1
+    fi
+
+    if [[ "${state,,}" == "stopped" ]]; then
+        bashio::log.info "App '${slug}' is already stopped; skipping stop."
+        return 0
+    fi
+
+    stop_addon "${slug}" || bashio::log.warning "Stop request for app '${slug}' was not acknowledged; checking its state before retrying."
+    wait_for_addon_state "${slug}" "stopped"
 }
 
 # -----------------------------------------------------------------------------
@@ -415,7 +570,10 @@ stop_core() {
     bashio::log.info "Stopping Home Assistant Core..."
     if ! supervisor_api "POST" "/core/stop"; then
         bashio::log.error "Failed to stop Home Assistant Core"
+        return 1
     fi
+
+    return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -425,11 +583,16 @@ core_watchdog_state() {
     local response
 
     response="$(supervisor_api "GET" "/core/info")"
-    jq --raw-output '.data.watchdog // empty' <<< "${response}"
+    jq --raw-output 'if .data.watchdog == null then empty else .data.watchdog end' <<< "${response}"
 }
 
 set_core_watchdog() {
     local desired_state="${1}"
+
+    if bashio::config.true 'dry_run'; then
+        bashio::log.notice "[dry_run] Would set Home Assistant Core watchdog to ${desired_state}."
+        return 0
+    fi
 
     supervisor_api_json "POST" "/core/options" "{\"watchdog\":${desired_state}}" > /dev/null
 }
@@ -474,15 +637,38 @@ pause_core_watchdog_if_needed() {
 
 restore_core_watchdog_if_needed() {
     local restore_value="${1}"
+    local current_value
 
     case "${restore_value}" in
         true|false)
+            if bashio::config.true 'dry_run'; then
+                bashio::log.notice "[dry_run] Would restore Home Assistant Core watchdog to ${restore_value}."
+                return 0
+            fi
+
+            if ! current_value="$(supervisor_state_with_backoff "Home Assistant Core watchdog state" core_watchdog_state)"; then
+                return 1
+            fi
+
+            if [[ "${current_value}" == "${restore_value}" ]]; then
+                bashio::log.info "Home Assistant Core watchdog is already ${restore_value}; skipping update."
+                return 0
+            fi
+
             bashio::log.info "Restoring Home Assistant Core watchdog to ${restore_value}."
             if ! set_core_watchdog "${restore_value}"; then
-                bashio::log.warning "Could not restore Home Assistant Core watchdog to ${restore_value}."
+                bashio::log.warning "Watchdog update was not acknowledged; checking its state before retrying."
+            fi
+
+            if ! current_value="$(supervisor_state_with_backoff "Home Assistant Core watchdog state" core_watchdog_state)" \
+                || [[ "${current_value}" != "${restore_value}" ]]; then
+                bashio::log.error "Could not confirm that the Home Assistant Core watchdog was restored to ${restore_value}."
+                return 1
             fi
             ;;
     esac
+
+    return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -492,6 +678,7 @@ wait_for_core_api() {
     local timeout_seconds
     local deadline
     local elapsed_seconds
+    local poll_seconds="${CORE_READY_POLL_SECONDS}"
 
     timeout_seconds="$(config_int 'core_start_timeout_seconds' 600)"
     if (( timeout_seconds == 0 )); then
@@ -509,7 +696,11 @@ wait_for_core_api() {
             return 0
         fi
 
-        sleep "${CORE_READY_POLL_SECONDS}"
+        sleep "${poll_seconds}"
+        poll_seconds="$(( poll_seconds * 2 ))"
+        if (( poll_seconds > STATE_QUERY_MAX_BACKOFF_SECONDS )); then
+            poll_seconds="${STATE_QUERY_MAX_BACKOFF_SECONDS}"
+        fi
     done
 
     bashio::log.warning "Home Assistant Core API did not become ready within ${timeout_seconds}s; continuing restore anyway."
@@ -518,6 +709,7 @@ wait_for_core_api() {
 
 start_core() {
     local force="${1:-false}"
+    local state
 
     if [[ "${force}" != "true" ]] && ! bashio::config.true 'restart_core'; then
         return 0
@@ -528,13 +720,31 @@ start_core() {
         return 0
     fi
 
-    bashio::log.info "Starting Home Assistant Core..."
-    if ! supervisor_api "POST" "/core/start"; then
-        bashio::log.error "Failed to start Home Assistant Core"
+    if ! state="$(supervisor_state_with_backoff "Home Assistant Core state" core_state)"; then
+        return 1
+    fi
+
+    case "${state,,}" in
+        running|started)
+            bashio::log.info "Home Assistant Core is already running; skipping start."
+            ;;
+        starting)
+            bashio::log.info "Home Assistant Core is already starting; waiting for its API."
+            ;;
+        *)
+            bashio::log.info "Starting Home Assistant Core..."
+            if ! supervisor_api "POST" "/core/start"; then
+                bashio::log.warning "Core start request was not acknowledged; checking API readiness before retrying."
+            fi
+            ;;
+    esac
+
+    if wait_for_core_api; then
         return 0
     fi
 
-    wait_for_core_api || true
+    bashio::log.error "Home Assistant Core could not be confirmed ready."
+    return 1
 }
 
 # -----------------------------------------------------------------------------
@@ -545,6 +755,9 @@ write_window_state() {
     local temporary_addons_to_stop_json="${2}"
     local restart_core_json="${3}"
     local core_watchdog_restore_json="${4}"
+    local window_end_epoch="${5}"
+    local window_name="${6}"
+    local temporary_state_file="${WINDOW_STATE_FILE}.tmp.$$"
 
     if bashio::config.true 'dry_run'; then
         return 0
@@ -555,46 +768,311 @@ write_window_state() {
         --argjson core_watchdog_restore "${core_watchdog_restore_json}" \
         --argjson addons_to_restart "${addons_to_restart_json}" \
         --argjson temporary_addons_to_stop "${temporary_addons_to_stop_json}" \
-        '{restart_core: $restart_core, core_watchdog_restore: $core_watchdog_restore, addons_to_restart: $addons_to_restart, temporary_addons_to_stop: $temporary_addons_to_stop}' \
-        > "${WINDOW_STATE_FILE}"; then
+        --argjson window_end_epoch "${window_end_epoch}" \
+        --arg window_name "${window_name}" \
+        '{window_end_epoch: $window_end_epoch, attempts: 0, window_name: $window_name, restart_core: $restart_core, core_watchdog_restore: $core_watchdog_restore, addons_to_restart: $addons_to_restart, temporary_addons_to_stop: $temporary_addons_to_stop}' \
+        > "${temporary_state_file}" || ! mv -f "${temporary_state_file}" "${WINDOW_STATE_FILE}"; then
+        rm -f "${temporary_state_file}"
         bashio::log.error "Failed to write active-window recovery state; refusing to stop Home Assistant Core."
         return 1
     fi
 }
 
 # -----------------------------------------------------------------------------
-# Restore Core/apps from the persisted active-window state.
+# Atomically update the active-window state in place.
+# -----------------------------------------------------------------------------
+update_window_state() {
+    local temporary_state_file="${WINDOW_STATE_FILE}.tmp.$$"
+
+    if [[ ! -f "${WINDOW_STATE_FILE}" ]]; then
+        bashio::log.error "Cannot update active-window recovery state because it is missing."
+        return 1
+    fi
+
+    if jq "$@" "${WINDOW_STATE_FILE}" > "${temporary_state_file}" \
+        && mv -f "${temporary_state_file}" "${WINDOW_STATE_FILE}"; then
+        return 0
+    fi
+
+    rm -f "${temporary_state_file}"
+    bashio::log.error "Failed to atomically update active-window recovery state."
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Sleep in short intervals so a restarted app can resume the same absolute end.
+# -----------------------------------------------------------------------------
+wait_until_epoch() {
+    local target_epoch="${1}"
+    local now_epoch
+    local remaining_seconds
+    local sleep_seconds
+
+    while true; do
+        now_epoch="$(date +%s)"
+        if (( now_epoch >= target_epoch )); then
+            return 0
+        fi
+
+        remaining_seconds="$(( target_epoch - now_epoch ))"
+        sleep_seconds="${WINDOW_SLEEP_SLICE_SECONDS}"
+        if (( remaining_seconds < sleep_seconds )); then
+            sleep_seconds="${remaining_seconds}"
+        fi
+        sleep "${sleep_seconds}"
+    done
+}
+
+# -----------------------------------------------------------------------------
+# Restore Core/apps from persisted state. Completed actions are removed from the
+# state atomically so a SIGKILL resumes at the first pending action.
 # -----------------------------------------------------------------------------
 restore_window_from_state() {
+    local restore_only="${1:-auto}"
     local should_start_core
     local core_watchdog_restore
+    local window_end_epoch
+    local window_name
+    local attempts
+    local now_epoch
+    local restore_stagger_seconds
+    local restore_failed="false"
     local slug
+    local index
+    local -a addons_to_restart=()
+    local -a temporary_addons_to_stop=()
 
     if [[ ! -f "${WINDOW_STATE_FILE}" ]]; then
         return 0
     fi
 
-    bashio::log.warning "Found active maintenance window state; restoring services."
-
-    should_start_core="$(jq --raw-output '.restart_core // false' "${WINDOW_STATE_FILE}")"
-    core_watchdog_restore="$(jq --raw-output '.core_watchdog_restore // "null"' "${WINDOW_STATE_FILE}")"
-    if [[ "${should_start_core}" == "true" ]]; then
-        start_core true
+    if ! jq --exit-status 'type == "object"' "${WINDOW_STATE_FILE}" > /dev/null; then
+        bashio::log.error "Active-window recovery state is invalid JSON; clearing it to prevent a restart loop."
+        rm -f "${WINDOW_STATE_FILE}"
+        return 1
     fi
 
-    while IFS= read -r slug; do
+    window_name="$(jq --raw-output '.window_name // "unknown maintenance window"' "${WINDOW_STATE_FILE}")"
+    window_end_epoch="$(jq --raw-output '.window_end_epoch // 0' "${WINDOW_STATE_FILE}")"
+    now_epoch="$(date +%s)"
+
+    if [[ "${restore_only}" == "auto" ]]; then
+        if [[ ! "${window_end_epoch}" =~ ^[0-9]+$ ]] || (( window_end_epoch <= now_epoch )); then
+            restore_only="true"
+        else
+            restore_only="false"
+        fi
+    fi
+
+    attempts="$(jq --raw-output --argjson max_attempts "${MAX_RESTORE_ATTEMPTS}" '
+        (.attempts // 0) as $attempts
+        | if (($attempts | type) == "number")
+            and ($attempts >= 0)
+            and ($attempts <= $max_attempts)
+            and ($attempts == ($attempts | floor))
+          then $attempts + 1
+          else $max_attempts + 1
+          end
+    ' "${WINDOW_STATE_FILE}")"
+    if ! update_window_state --argjson attempts "${attempts}" ".attempts = \$attempts"; then
+        bashio::log.error "Could not persist the restore attempt; switching to one restore-only cleanup pass so recovery cannot loop."
+        restore_only="true"
+        restore_failed="true"
+    fi
+
+    if (( attempts > MAX_RESTORE_ATTEMPTS )); then
+        bashio::log.error "Restore for '${window_name}' keeps failing after ${MAX_RESTORE_ATTEMPTS} attempts; clearing recovery state and returning to normal scheduling."
+        rm -f "${WINDOW_STATE_FILE}"
+        return 1
+    fi
+
+    bashio::log.warning "Restoring '${window_name}' from persisted state (attempt ${attempts}/${MAX_RESTORE_ATTEMPTS})."
+
+    should_start_core="$(jq --raw-output '.restart_core // false' "${WINDOW_STATE_FILE}")"
+    core_watchdog_restore="$(jq --raw-output '
+        if .core_watchdog_restore == true then "true"
+        elif .core_watchdog_restore == false then "false"
+        else "null"
+        end
+    ' "${WINDOW_STATE_FILE}")"
+    if [[ "${should_start_core}" == "true" ]]; then
+        if start_core true; then
+            if ! update_window_state '.restart_core = false'; then
+                if [[ "${restore_only}" != "true" ]]; then
+                    return 1
+                fi
+                restore_failed="true"
+            fi
+        elif [[ "${restore_only}" == "true" ]]; then
+            restore_failed="true"
+        else
+            return 1
+        fi
+    fi
+
+    mapfile -t addons_to_restart < <(jq --raw-output '.addons_to_restart[]?' "${WINDOW_STATE_FILE}")
+    restore_stagger_seconds="$(config_int 'restore_stagger_seconds' 15)"
+    if (( restore_stagger_seconds > 300 )); then
+        bashio::log.warning "Config value 'restore_stagger_seconds' exceeds 300; using 15."
+        restore_stagger_seconds="15"
+    fi
+
+    for (( index = 0; index < ${#addons_to_restart[@]}; index++ )); do
+        slug="${addons_to_restart[${index}]}"
         [[ -z "${slug}" ]] && continue
-        start_addon "${slug}"
-    done < <(jq --raw-output '.addons_to_restart[]?' "${WINDOW_STATE_FILE}")
 
-    while IFS= read -r slug; do
-        [[ -z "${slug}" ]] && continue
-        stop_addon "${slug}"
-    done < <(jq --raw-output '.temporary_addons_to_stop[]?' "${WINDOW_STATE_FILE}")
+        if (( restore_stagger_seconds > 0 )); then
+            bashio::log.info "Waiting ${restore_stagger_seconds}s before restoring app '${slug}'."
+            sleep "${restore_stagger_seconds}"
+        fi
 
-    restore_core_watchdog_if_needed "${core_watchdog_restore}"
+        if restore_start_addon "${slug}"; then
+            if ! update_window_state --arg slug "${slug}" \
+                ".addons_to_restart = ((.addons_to_restart // []) | map(select(. != \$slug)))"; then
+                if [[ "${restore_only}" != "true" ]]; then
+                    return 1
+                fi
+                restore_failed="true"
+            fi
+        elif [[ "${restore_only}" == "true" ]]; then
+            restore_failed="true"
+        else
+            return 1
+        fi
+    done
 
-    rm -f "${WINDOW_STATE_FILE}"
+    mapfile -t temporary_addons_to_stop < <(jq --raw-output '.temporary_addons_to_stop[]?' "${WINDOW_STATE_FILE}")
+    if [[ "${restore_only}" == "true" ]]; then
+        if (( ${#temporary_addons_to_stop[@]} > 0 )); then
+            bashio::log.warning "Expired recovery state lists temporary apps to stop; leaving them running during restore-only cleanup."
+        fi
+    else
+        for slug in "${temporary_addons_to_stop[@]}"; do
+            [[ -z "${slug}" ]] && continue
+            if restore_stop_addon "${slug}"; then
+                if ! update_window_state --arg slug "${slug}" \
+                    ".temporary_addons_to_stop = ((.temporary_addons_to_stop // []) | map(select(. != \$slug)))"; then
+                    return 1
+                fi
+            else
+                return 1
+            fi
+        done
+    fi
+
+    if restore_core_watchdog_if_needed "${core_watchdog_restore}"; then
+        if ! update_window_state '.core_watchdog_restore = null'; then
+            if [[ "${restore_only}" != "true" ]]; then
+                return 1
+            fi
+            restore_failed="true"
+        fi
+    elif [[ "${restore_only}" == "true" ]]; then
+        restore_failed="true"
+    else
+        return 1
+    fi
+
+    if [[ "${restore_only}" == "true" ]]; then
+        if ! rm -f "${WINDOW_STATE_FILE}"; then
+            bashio::log.error "Could not clear stale recovery state for '${window_name}'."
+            return 1
+        fi
+        if [[ "${restore_failed}" == "true" ]]; then
+            bashio::log.error "Restore-only cleanup for '${window_name}' had failures; stale recovery state was cleared to prevent a loop."
+        else
+            bashio::log.info "Restore-only cleanup for '${window_name}' completed; stale recovery state was cleared."
+        fi
+        return 0
+    fi
+
+    if jq --exit-status \
+        '(.restart_core // false) == false
+        and ((.addons_to_restart // []) | length) == 0
+        and ((.temporary_addons_to_stop // []) | length) == 0
+        and (.core_watchdog_restore // null) == null' \
+        "${WINDOW_STATE_FILE}" > /dev/null; then
+        rm -f "${WINDOW_STATE_FILE}"
+        return 0
+    fi
+
+    bashio::log.error "Restore state for '${window_name}' still contains pending actions."
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Retry incomplete restore passes until state is complete or the persisted
+# attempt limit clears it.
+# -----------------------------------------------------------------------------
+restore_window_until_complete() {
+    local restore_only="${1:-false}"
+    local failed_passes=0
+
+    while [[ -f "${WINDOW_STATE_FILE}" ]]; do
+        if restore_window_from_state "${restore_only}"; then
+            return 0
+        fi
+
+        if [[ ! -f "${WINDOW_STATE_FILE}" ]]; then
+            return 1
+        fi
+
+        failed_passes="$(( failed_passes + 1 ))"
+        if (( failed_passes > MAX_RESTORE_ATTEMPTS )); then
+            bashio::log.error "Restore could not make durable progress after ${MAX_RESTORE_ATTEMPTS} attempts; clearing recovery state and returning to normal scheduling."
+            rm -f "${WINDOW_STATE_FILE}"
+            return 1
+        fi
+
+        bashio::log.warning "Restore remains incomplete; retrying in ${RESTORE_PASS_RETRY_SECONDS}s."
+        sleep "${RESTORE_PASS_RETRY_SECONDS}"
+    done
+
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# Resume an interrupted active window, or safely clean up an expired/legacy
+# state file without stopping anything.
+# -----------------------------------------------------------------------------
+recover_window_from_state() {
+    local window_end_epoch
+    local window_name
+    local now_epoch
+    local remaining_seconds
+
+    if [[ ! -f "${WINDOW_STATE_FILE}" ]]; then
+        return 0
+    fi
+
+    if ! jq --exit-status 'type == "object"' "${WINDOW_STATE_FILE}" > /dev/null; then
+        bashio::log.error "Active-window recovery state is invalid JSON; clearing it to prevent a restart loop."
+        rm -f "${WINDOW_STATE_FILE}"
+        return 0
+    fi
+
+    window_end_epoch="$(jq --raw-output '.window_end_epoch // 0' "${WINDOW_STATE_FILE}")"
+    window_name="$(jq --raw-output '.window_name // "unknown maintenance window"' "${WINDOW_STATE_FILE}")"
+    now_epoch="$(date +%s)"
+
+    if [[ ! "${window_end_epoch}" =~ ^[0-9]+$ ]] || (( window_end_epoch <= 0 )); then
+        bashio::log.warning "Found recovery state for '${window_name}' with no valid end time; the window is long over or predates this state format. Running restore-only cleanup."
+        restore_window_until_complete true || true
+        return 0
+    fi
+
+    if (( now_epoch >= window_end_epoch )); then
+        bashio::log.warning "Found recovery state for '${window_name}', but the window is long over. Running restore-only cleanup without stopping services."
+        restore_window_until_complete true || true
+        return 0
+    fi
+
+    remaining_seconds="$(( window_end_epoch - now_epoch ))"
+    bashio::log.warning "Found active maintenance window state for '${window_name}'; resuming the remaining ${remaining_seconds}s."
+    wait_until_epoch "${window_end_epoch}"
+    if ! restore_window_until_complete false; then
+        bashio::log.error "Restore for '${window_name}' did not complete before its retry limit."
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -604,7 +1082,7 @@ handle_shutdown() {
     local signal_name="${1:-signal}"
 
     bashio::log.warning "Maintenance Window app received ${signal_name}; checking for active restore state."
-    restore_window_from_state
+    restore_window_until_complete auto || true
     exit 0
 }
 
@@ -628,8 +1106,10 @@ run_maintenance_window() {
     local -a temporary_addons_to_stop=()
     local core_will_stop="false"
     local core_watchdog_restore="null"
+    local window_end_epoch
 
     bashio::log.notice "=== Entering maintenance window: ${name} (${duration_minutes} min) ==="
+    window_end_epoch="$(( $(date +%s) + duration_minutes * 60 ))"
 
     # 1: start apps that should be temporarily available during the window.
     while IFS= read -r slug; do
@@ -659,7 +1139,9 @@ run_maintenance_window() {
             "$(json_array "${addons_to_restart[@]}")" \
             "$(json_array "${temporary_addons_to_stop[@]}")" \
             "${core_will_stop}" \
-            "${core_watchdog_restore}"; then
+            "${core_watchdog_restore}" \
+            "${window_end_epoch}" \
+            "${name}"; then
             core_will_stop="false"
             core_watchdog_restore="null"
         fi
@@ -667,11 +1149,13 @@ run_maintenance_window() {
 
     if [[ "${core_will_stop}" == "true" ]]; then
         pause_core_watchdog_if_needed "${core_watchdog_restore}"
-        stop_core
+        if ! stop_core; then
+            bashio::log.warning "Core stop was not acknowledged; keeping the recovery state and continuing the window."
+        fi
     fi
 
-    # 4: hold the window open.
-    sleep "$(( duration_minutes * 60 ))"
+    # 4: hold the window open until the persisted absolute end time.
+    wait_until_epoch "${window_end_epoch}"
 
     # 5: bring things back using the same path as crash/watchdog recovery.
     if bashio::config.true 'dry_run'; then
@@ -684,11 +1168,14 @@ run_maintenance_window() {
         for slug in "${temporary_addons_to_stop[@]}"; do
             stop_addon "${slug}"
         done
+        bashio::log.info "=== Maintenance window complete; everything restarted ==="
     else
-        restore_window_from_state
+        if restore_window_until_complete false; then
+            bashio::log.info "=== Maintenance window complete; everything restarted ==="
+        else
+            bashio::log.error "Maintenance window ended, but restore did not complete before its retry limit."
+        fi
     fi
-
-    bashio::log.info "=== Maintenance window complete; everything restarted ==="
 }
 
 # -----------------------------------------------------------------------------
@@ -834,7 +1321,7 @@ main() {
         bashio::log.notice "DRY RUN mode is enabled — no apps or Core will actually be stopped."
     fi
 
-    restore_window_from_state
+    recover_window_from_state
     write_addon_inventory
 
     while true; do

@@ -51,6 +51,7 @@ core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 10
 core_start_timeout_seconds: 600
+restore_stagger_seconds: 15
 pause_core_watchdog: true
 stop_addons: []
 start_addons: []
