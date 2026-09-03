@@ -30,6 +30,8 @@ jobs:
           bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish
           bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window_health/run
           bash -n scripts/test_scheduler_restore.sh
+          bash -n scripts/test_container_sigkill.sh
+          python -m py_compile scripts/fake_supervisor.py
 
       - name: Install validation tools
         run: |
@@ -44,7 +46,8 @@ jobs:
             maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/run \
             maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish \
             maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window_health/run \
-            scripts/test_scheduler_restore.sh
+            scripts/test_scheduler_restore.sh \
+            scripts/test_container_sigkill.sh
 
       - name: Test scheduler restore recovery
         run: bash scripts/test_scheduler_restore.sh
@@ -112,3 +115,6 @@ jobs:
 
           docker logs "${container_name}"
           exit 1
+
+      - name: Test container SIGKILL recovery
+        run: bash scripts/test_container_sigkill.sh maintenance-window-addon:test

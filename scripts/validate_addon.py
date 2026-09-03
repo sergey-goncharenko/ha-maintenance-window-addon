@@ -178,6 +178,7 @@ def validate_line_endings() -> None:
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window_health" / "type",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "user" / "contents.d" / "maintenance_window_health",
         ROOT / "scripts" / "test_scheduler_restore.sh",
+        ROOT / "scripts" / "test_container_sigkill.sh",
     ]
     apparmor_file = ADDON / "apparmor.txt"
     if apparmor_file.exists():
