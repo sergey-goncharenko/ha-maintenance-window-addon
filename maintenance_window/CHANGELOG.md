@@ -3,6 +3,24 @@
 All notable changes to the Maintenance Window add-on are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.9.1
+
+- Never disable the Home Assistant Core watchdog during a maintenance window;
+  `pause_core_watchdog` remains as a deprecated no-op for configuration
+  compatibility.
+- Add a Supervisor health endpoint and require the Maintenance Window app
+  Watchdog to be enabled before any real Core or app action.
+- Reconcile persisted Core watchdog state before all other startup recovery,
+  including expired state and state at the restore retry limit.
+- Persist the complete restore plan before the first Supervisor mutation, stop
+  Core before selected apps, and add process-level `SIGKILL` recovery tests.
+- Require at least 256 MiB of host `MemAvailable` before stopping Core by
+  default, configurable with `min_available_memory_mb`.
+- Keep logging and metrics apps running automatically, and add
+  `never_stop_addons` for explicitly protected app slugs.
+- Keep new installations non-mutating with `dry_run: true`, explicit per-window
+  Core opt-in, and `pause_core_watchdog: false` defaults.
+
 ## 0.9.0
 
 - Make interrupted restores crash-safe by atomically consuming each completed

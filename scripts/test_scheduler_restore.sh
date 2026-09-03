@@ -10,6 +10,7 @@ readonly REPOSITORY_ROOT
 TEST_ROOT="$(mktemp -d)"
 readonly TEST_ROOT
 export WINDOW_STATE_FILE="${TEST_ROOT}/window-state.json"
+export MEMINFO_FILE="${TEST_ROOT}/meminfo"
 
 trap 'rm -rf "${TEST_ROOT}"' EXIT
 
@@ -33,6 +34,15 @@ FAIL_START_SLUG_ONCE=""
 ALWAYS_FAIL_START_SLUG=""
 RESTORE_STAGGER_SECONDS="0"
 FAIL_STATE_UPDATES="false"
+ADDON_WATCHDOG_STATE="true"
+WINDOW_RESTART_CORE="false"
+STOP_ADDONS=""
+START_ADDONS=""
+NEVER_STOP_ADDONS=""
+BLOCK_WINDOW_WAIT="false"
+WINDOW_WAIT_MARKER=""
+MIN_AVAILABLE_MEMORY_MB="256"
+PAUSE_CORE_WATCHDOG="false"
 
 fail() {
     printf 'FAIL: %s\n' "${1}" >&2
@@ -88,11 +98,21 @@ reset_fixture() {
     : > "${TEST_LOG}"
     printf 'running\n' > "${CORE_STATE_FILE}"
     printf 'true\n' > "${WATCHDOG_STATE_FILE}"
+    printf 'MemAvailable:    1048576 kB\n' > "${MEMINFO_FILE}"
     DRY_RUN="false"
     FAIL_START_SLUG_ONCE=""
     ALWAYS_FAIL_START_SLUG=""
     RESTORE_STAGGER_SECONDS="0"
     FAIL_STATE_UPDATES="false"
+    ADDON_WATCHDOG_STATE="true"
+    WINDOW_RESTART_CORE="false"
+    STOP_ADDONS=""
+    START_ADDONS=""
+    NEVER_STOP_ADDONS=""
+    BLOCK_WINDOW_WAIT="false"
+    WINDOW_WAIT_MARKER=""
+    MIN_AVAILABLE_MEMORY_MB="256"
+    PAUSE_CORE_WATCHDOG="false"
 }
 
 write_state() {
@@ -115,7 +135,11 @@ write_state() {
 }
 
 function bashio::config.true {
-    [[ "${1}" == "dry_run" && "${DRY_RUN}" == "true" ]]
+    case "${1}" in
+        dry_run) [[ "${DRY_RUN}" == "true" ]] ;;
+        pause_core_watchdog) [[ "${PAUSE_CORE_WATCHDOG}" == "true" ]] ;;
+        *) return 1 ;;
+    esac
 }
 
 function bashio::config {
@@ -125,6 +149,15 @@ function bashio::config {
     case "${key}" in
         core_start_timeout_seconds) printf '60\n' ;;
         restore_stagger_seconds) printf '%s\n' "${RESTORE_STAGGER_SECONDS}" ;;
+        startup_grace_seconds) printf '0\n' ;;
+        max_core_stop_minutes) printf '60\n' ;;
+        min_available_memory_mb) printf '%s\n' "${MIN_AVAILABLE_MEMORY_MB}" ;;
+        core_stop_confirmation) printf 'STOP_CORE\n' ;;
+        windows\[0\].restart_core) printf '%s\n' "${WINDOW_RESTART_CORE}" ;;
+        windows\[0\].stop_addons|windows\[0\].start_addons) printf '__missing__\n' ;;
+        stop_addons) printf '%s' "${STOP_ADDONS}" ;;
+        start_addons) printf '%s' "${START_ADDONS}" ;;
+        never_stop_addons) printf '%s' "${NEVER_STOP_ADDONS}" ;;
         *) printf '%s\n' "${default_value}" ;;
     esac
 }
@@ -146,6 +179,18 @@ sleep() {
     return 0
 }
 
+eval "$(declare -f wait_until_epoch | sed '1s/wait_until_epoch/wait_until_epoch_real/')"
+wait_until_epoch() {
+    if [[ "${BLOCK_WINDOW_WAIT}" == "true" ]]; then
+        : > "${WINDOW_WAIT_MARKER}"
+        while true; do
+            command sleep 1
+        done
+    fi
+
+    wait_until_epoch_real "$@"
+}
+
 supervisor_api() {
     local method="${1}"
     local path="${2}"
@@ -153,6 +198,10 @@ supervisor_api() {
     local state_file
 
     case "${method} ${path}" in
+        "GET /addons/self/info")
+            printf '{"data":{"state":"started","watchdog":%s}}\n' "${ADDON_WATCHDOG_STATE}"
+            return 0
+            ;;
         "GET /core/info")
             printf '{"data":{"state":"%s","watchdog":%s}}\n' \
                 "$(< "${CORE_STATE_FILE}")" "$(< "${WATCHDOG_STATE_FILE}")"
@@ -283,6 +332,198 @@ test_pending_running_core_is_not_restarted() {
     assert_no_action 'POST /core/start'
 }
 
+test_recovery_does_not_restart_addon_that_was_never_stopped() {
+    local now_epoch
+
+    reset_fixture
+    now_epoch="$(date +%s)"
+    set_addon_state "app_one" "started"
+    write_state "$(( now_epoch - 60 ))" false null '["app_one"]' '[]'
+
+    recover_window_from_state
+
+    assert_state_cleared
+    assert_no_action 'POST /addons/app_one/start'
+    assert_equals "started" "$(get_addon_state "app_one")" "recovery changed an already-running app"
+}
+
+test_repeated_recovery_is_idempotent() {
+    local now_epoch
+
+    reset_fixture
+    now_epoch="$(date +%s)"
+    printf 'stopped\n' > "${CORE_STATE_FILE}"
+    set_addon_state "app_one" "stopped"
+    write_state "$(( now_epoch - 60 ))" true null '["app_one"]' '[]'
+
+    recover_window_from_state
+    recover_window_from_state
+
+    assert_state_cleared
+    assert_equals "1" "$(grep --count --fixed-strings 'POST /core/start' "${ACTION_LOG}" || true)" "recovery restarted Core twice"
+    assert_equals "1" "$(grep --count --fixed-strings 'POST /addons/app_one/start' "${ACTION_LOG}" || true)" "recovery restarted an app twice"
+}
+
+test_core_watchdog_is_never_paused() {
+    reset_fixture
+    PAUSE_CORE_WATCHDOG="true"
+
+    pause_core_watchdog_if_needed
+
+    assert_equals "true" "$(< "${WATCHDOG_STATE_FILE}")" "maintenance window disabled the Core watchdog"
+    assert_no_action 'POST /core/options {"watchdog":false}'
+}
+
+test_core_stop_requires_addon_watchdog() {
+    reset_fixture
+    WINDOW_RESTART_CORE="true"
+    ADDON_WATCHDOG_STATE="false"
+
+    if should_stop_core_for_window 7 0; then
+        fail "Core stop was allowed while the Maintenance Window watchdog was disabled"
+    fi
+
+    grep --fixed-strings --quiet "Core stop blocked because the Maintenance Window app watchdog is disabled" "${TEST_LOG}" \
+        || fail "disabled app watchdog did not produce the safety warning"
+}
+
+test_app_actions_require_addon_watchdog() {
+    reset_fixture
+    ADDON_WATCHDOG_STATE="false"
+    STOP_ADDONS=$'ordinary_app\n'
+    set_addon_state "ordinary_app" "started"
+
+    if run_maintenance_window 0 "watchdog guard test" 0; then
+        fail "app-only maintenance ran while the Maintenance Window watchdog was disabled"
+    fi
+
+    assert_no_action 'POST /addons/ordinary_app/stop'
+    assert_equals "started" "$(get_addon_state "ordinary_app")" "app-only window stopped an app without crash recovery"
+}
+
+test_core_stop_requires_available_memory() {
+    reset_fixture
+    WINDOW_RESTART_CORE="true"
+    printf 'MemAvailable:    65536 kB\n' > "${MEMINFO_FILE}"
+
+    if should_stop_core_for_window 7 0; then
+        fail "Core stop was allowed with insufficient available memory"
+    fi
+
+    grep --fixed-strings --quiet "only 64 MiB is available" "${TEST_LOG}" \
+        || fail "low-memory Core stop did not produce the safety warning"
+}
+
+test_core_stops_before_apps_and_observability_stays_running() {
+    local core_stop_line
+    local app_stop_line
+
+    reset_fixture
+    WINDOW_RESTART_CORE="true"
+    STOP_ADDONS=$'4f0066aa_syslog\nordinary_app\n'
+    set_addon_state "4f0066aa_syslog" "started"
+    set_addon_state "ordinary_app" "started"
+
+    run_maintenance_window 0 "ordering test" 0
+
+    assert_no_action 'POST /addons/4f0066aa_syslog/stop'
+    assert_equals "started" "$(get_addon_state "4f0066aa_syslog")" "observability app was stopped"
+    core_stop_line="$(grep --line-number --fixed-strings 'POST /core/stop' "${ACTION_LOG}" | cut -d: -f1)"
+    app_stop_line="$(grep --line-number --fixed-strings 'POST /addons/ordinary_app/stop' "${ACTION_LOG}" | cut -d: -f1)"
+    (( core_stop_line < app_stop_line )) || fail "ordinary app stopped before Core"
+    grep --fixed-strings --quiet "preserve logs and metrics" "${TEST_LOG}" \
+        || fail "observability protection was not logged"
+}
+
+test_never_stop_addons_are_protected() {
+    reset_fixture
+    STOP_ADDONS=$'protected_app\n'
+    NEVER_STOP_ADDONS=$'protected_app\n'
+    set_addon_state "protected_app" "started"
+
+    run_maintenance_window 0 "protected app test" 0
+
+    assert_no_action 'POST /addons/protected_app/stop'
+    assert_equals "started" "$(get_addon_state "protected_app")" "never-stop app was stopped"
+    grep --fixed-strings --quiet "listed in never_stop_addons" "${TEST_LOG}" \
+        || fail "never-stop protection was not logged"
+}
+
+test_protected_temporary_addon_is_left_running() {
+    reset_fixture
+    START_ADDONS=$'protected_app\n4f0066aa_syslog\n'
+    NEVER_STOP_ADDONS=$'protected_app\n'
+    set_addon_state "protected_app" "stopped"
+    set_addon_state "4f0066aa_syslog" "stopped"
+
+    run_maintenance_window 0 "protected temporary app test" 0
+
+    assert_equals "started" "$(get_addon_state "protected_app")" "never-stop temporary app was stopped"
+    assert_equals "started" "$(get_addon_state "4f0066aa_syslog")" "observability temporary app was stopped"
+    assert_no_action 'POST /addons/protected_app/stop'
+    assert_no_action 'POST /addons/4f0066aa_syslog/stop'
+}
+
+run_sigkill_recovery_case() {
+    local addon_watchdog="${1}"
+    local wait_marker="${TEST_ROOT}/window-waiting"
+    local child_pid
+    local attempt
+
+    reset_fixture
+    rm -f "${wait_marker}"
+    WINDOW_RESTART_CORE="true"
+    ADDON_WATCHDOG_STATE="${addon_watchdog}"
+    BLOCK_WINDOW_WAIT="true"
+    WINDOW_WAIT_MARKER="${wait_marker}"
+
+    (run_maintenance_window 0 "SIGKILL test" 0) &
+    child_pid="$!"
+    for (( attempt = 0; attempt < 100; attempt++ )); do
+        [[ -f "${wait_marker}" ]] && break
+        command sleep 0.05
+    done
+    [[ -f "${wait_marker}" ]] || fail "SIGKILL fixture did not enter its window"
+
+    kill -KILL "${child_pid}"
+    wait "${child_pid}" 2> /dev/null || true
+    BLOCK_WINDOW_WAIT="false"
+
+    recover_window_from_state
+
+    assert_state_cleared
+    assert_equals "running" "$(< "${CORE_STATE_FILE}")" "SIGKILL recovery left Core stopped"
+    assert_equals "true" "$(< "${WATCHDOG_STATE_FILE}")" "SIGKILL recovery left the Core watchdog disabled"
+    assert_no_action 'POST /core/options {"watchdog":false}'
+}
+
+test_sigkill_recovers_with_addon_watchdog_enabled() {
+    run_sigkill_recovery_case true
+    grep --fixed-strings --quiet 'POST /core/stop' "${ACTION_LOG}" \
+        || fail "enabled-watchdog SIGKILL fixture did not stop Core"
+}
+
+test_sigkill_with_addon_watchdog_disabled_keeps_core_safe() {
+    run_sigkill_recovery_case false
+    assert_no_action 'POST /core/stop'
+}
+
+test_startup_reconciles_watchdog_before_retry_cutoff() {
+    local now_epoch
+
+    reset_fixture
+    now_epoch="$(date +%s)"
+    printf 'false\n' > "${WATCHDOG_STATE_FILE}"
+    write_state "$(( now_epoch - 60 ))" false true '[]' '[]' "${MAX_RESTORE_ATTEMPTS}"
+
+    recover_window_from_state
+
+    assert_state_cleared
+    assert_equals "true" "$(< "${WATCHDOG_STATE_FILE}")" "startup discarded the pending watchdog restore"
+    grep --fixed-strings --quiet 'POST /core/options {"watchdog":true}' "${ACTION_LOG}" \
+        || fail "startup did not reconcile the watchdog before the restore cutoff"
+}
+
 test_false_watchdog_target_is_restored_idempotently() {
     local now_epoch
 
@@ -299,47 +540,47 @@ test_false_watchdog_target_is_restored_idempotently() {
         || fail "false watchdog restore did not update Supervisor"
 }
 
-    test_restore_staggers_before_each_pending_app() {
-        local now_epoch
-        local actions
+test_restore_staggers_before_each_pending_app() {
+    local now_epoch
+    local actions
 
-        reset_fixture
-        now_epoch="$(date +%s)"
-        RESTORE_STAGGER_SECONDS="15"
-        set_addon_state "app_one" "stopped"
-        set_addon_state "app_two" "stopped"
-        write_state "$(( now_epoch + 600 ))" false null '["app_one","app_two"]' '[]'
+    reset_fixture
+    now_epoch="$(date +%s)"
+    RESTORE_STAGGER_SECONDS="15"
+    set_addon_state "app_one" "stopped"
+    set_addon_state "app_two" "stopped"
+    write_state "$(( now_epoch + 600 ))" false null '["app_one","app_two"]' '[]'
 
-        restore_window_from_state false
+    restore_window_from_state false
 
-        assert_state_cleared
-        actions="$(< "${ACTION_LOG}")"
-        assert_equals \
+    assert_state_cleared
+    actions="$(< "${ACTION_LOG}")"
+    assert_equals \
         $'SLEEP 15\nPOST /addons/app_one/start\nSLEEP 15\nPOST /addons/app_two/start' \
         "${actions}" \
         "app restores were not staggered before each start"
-    }
+}
 
-    test_state_update_failure_degrades_without_looping() {
-        local now_epoch
+test_state_update_failure_degrades_without_looping() {
+    local now_epoch
 
-        reset_fixture
-        now_epoch="$(date +%s)"
-        FAIL_STATE_UPDATES="true"
-        printf 'stopped\n' > "${CORE_STATE_FILE}"
-        set_addon_state "app_one" "stopped"
-        set_addon_state "temporary" "started"
-        write_state "$(( now_epoch + 600 ))" true null '["app_one"]' '["temporary"]'
+    reset_fixture
+    now_epoch="$(date +%s)"
+    FAIL_STATE_UPDATES="true"
+    printf 'stopped\n' > "${CORE_STATE_FILE}"
+    set_addon_state "app_one" "stopped"
+    set_addon_state "temporary" "started"
+    write_state "$(( now_epoch + 600 ))" true null '["app_one"]' '["temporary"]'
 
-        restore_window_until_complete false
+    restore_window_until_complete false
 
-        assert_state_cleared
-        assert_equals "running" "$(< "${CORE_STATE_FILE}")" "state update failure left Core stopped"
-        assert_equals "started" "$(get_addon_state "app_one")" "state update failure left an app stopped"
-        assert_equals "started" "$(get_addon_state "temporary")" "degraded cleanup stopped a temporary app"
-        grep --fixed-strings --quiet 'switching to one restore-only cleanup pass' "${TEST_LOG}" \
+    assert_state_cleared
+    assert_equals "running" "$(< "${CORE_STATE_FILE}")" "state update failure left Core stopped"
+    assert_equals "started" "$(get_addon_state "app_one")" "state update failure left an app stopped"
+    assert_equals "started" "$(get_addon_state "temporary")" "degraded cleanup stopped a temporary app"
+    grep --fixed-strings --quiet 'switching to one restore-only cleanup pass' "${TEST_LOG}" \
         || fail "state update failure did not log safe degradation"
-    }
+}
 
 test_interrupted_restore_resumes_pending_actions() {
     local now_epoch
@@ -420,6 +661,18 @@ test_dry_run_never_mutates_supervisor() {
 test_legacy_state_does_not_replay_running_services
 test_expired_state_restores_without_stopping
 test_pending_running_core_is_not_restarted
+test_recovery_does_not_restart_addon_that_was_never_stopped
+test_repeated_recovery_is_idempotent
+test_core_watchdog_is_never_paused
+test_core_stop_requires_addon_watchdog
+test_app_actions_require_addon_watchdog
+test_core_stop_requires_available_memory
+test_core_stops_before_apps_and_observability_stays_running
+test_never_stop_addons_are_protected
+test_protected_temporary_addon_is_left_running
+test_sigkill_recovers_with_addon_watchdog_enabled
+test_sigkill_with_addon_watchdog_disabled_keeps_core_safe
+test_startup_reconciles_watchdog_before_retry_cutoff
 test_false_watchdog_target_is_restored_idempotently
 test_restore_staggers_before_each_pending_app
 test_state_update_failure_degrades_without_looping

@@ -97,7 +97,8 @@ Reference docs:
 When changing the scheduler:
 1. Preserve the Core-stop safety model: `restart_core: true` is not enough;
    `core_stop_confirmation: STOP_CORE`, startup grace, max duration, and
-   recovery-state write success must also pass.
+  recovery-state write success must also pass. The Maintenance Window app
+  watchdog must be enabled, and the Core watchdog must never be paused.
 2. Keep `dry_run: true` authoritative: no mutating Supervisor API calls.
 3. Compute the soonest future occurrence from `windows` in the container/host
    timezone and run exactly that window duration.
@@ -109,7 +110,11 @@ When changing the scheduler:
   again** even if an add-on start/stop fails (log the failure, keep going).
 - Treat `dry_run: true` as authoritative: in dry-run mode, make **no** mutating
   Supervisor API calls.
-- Stop add-ons before Core; start Core before add-ons.
+- Refuse real Core or add-on actions unless Supervisor reports that this
+  add-on's watchdog is enabled.
+- Keep logging and metrics add-ons running. Stop Core before other configured
+  add-ons so observability remains available for the Core stop; start Core
+  before restoring add-ons.
 - Do not commit secrets or the `SUPERVISOR_TOKEN`.
 
 ## Validation

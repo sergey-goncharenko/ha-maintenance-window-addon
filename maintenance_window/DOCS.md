@@ -14,12 +14,13 @@ internet outages, attached hardware maintenance, and sensor work.
 The app runs as a long-running service (independent of Home Assistant Core,
 so it can start Core back up). On a schedule you define, it:
 
-1. Starts any apps listed in `start_addons` that are not already running.
-2. Stops the apps listed in `stop_addons`.
-3. Stops Home Assistant Core (if `restart_core` is enabled).
-4. Waits for the window `duration_minutes`.
-5. Starts Home Assistant Core and previously stopped apps again.
-6. Stops apps it temporarily started, leaving already-running apps alone.
+1. Plans every action and saves the complete recovery state.
+2. Starts any apps listed in `start_addons` that are not already running.
+3. Stops Home Assistant Core (if `restart_core` is safely armed).
+4. Stops non-observability apps listed in `stop_addons`.
+5. Waits for the window `duration_minutes`.
+6. Starts Home Assistant Core and previously stopped apps again.
+7. Stops apps it temporarily started, leaving already-running apps alone.
 
 Home Assistant now generally calls Supervisor-managed packages **apps**. Some
 legacy option names in this app still use `addons` (`stop_addons`,
@@ -44,19 +45,22 @@ stale profile left by earlier failed prototype installs.
 The app image is published to GHCR for `aarch64` and `amd64`, so normal
 installation should pull a prebuilt image instead of building on the HAOS device.
 
-> ⚠️ **Important:** While Core is stopped, your automations, dashboards, and
-> integrations are unavailable. Choose a window time when this is acceptable
-> (e.g. the middle of the night). Maintenance Window is what brings Core back,
-> so do not stop it during a maintenance window.
+> ⚠️ **Keep the Maintenance Window Watchdog enabled on the app Info page.** It
+> is what restarts this app after a container crash so persisted recovery can
+> run. Real Core and app actions are refused when the app Watchdog is disabled
+> or cannot be verified. Disabling it defeats crash recovery.
+
+While Core is stopped, your automations, dashboards, and integrations are
+unavailable. Choose a window time when this is acceptable. Maintenance Window
+never disables the Home Assistant Core watchdog and never stops itself.
 
 ## Development note
 
 Maintenance Window was developed with AI assistance, with human review and
 iterative testing throughout. It has been personally tested on a real Home
 Assistant OS setup, including dry-run validation, real Core stop/start windows,
-app stop/start restore, watchdog pause/restore, and recovery behavior. Even
-so, test carefully on your own system before relying on it for unattended
-maintenance.
+app stop/start restore, and recovery behavior. Even so, test carefully on your
+own system before relying on it for unattended maintenance.
 
 ## Configuration
 
@@ -69,10 +73,12 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
+min_available_memory_mb: 256
 core_start_timeout_seconds: 600
 restore_stagger_seconds: 15
-pause_core_watchdog: true
+pause_core_watchdog: false
 list_addons_on_startup: true
+never_stop_addons: []
 stop_addons:
   - core_mosquitto
   - a0d7b954_nodered
@@ -117,7 +123,13 @@ configurations, missing per-window `restart_core` is treated as disabled.
 For safety, this option is not enough on its own. Core is only stopped when
 `restart_core` is `true`, `core_stop_confirmation` is set exactly to
 `STOP_CORE`, the app has been running longer than `startup_grace_seconds`,
-and the window duration is no greater than `max_core_stop_minutes`.
+the window duration is no greater than `max_core_stop_minutes`, enough host
+memory is available, and Supervisor reports that the Maintenance Window app
+Watchdog is enabled.
+
+The default configuration is a safe mode for new installations: `dry_run` is
+`true`, the global and example per-window `restart_core` values are `false`, and
+Core still requires the exact `STOP_CORE` confirmation before it can be stopped.
 
 ### Option: `core_stop_confirmation`
 
@@ -136,6 +148,14 @@ immediately after installing, booting, or watchdog-restarting the app.
 Maximum maintenance window duration allowed to stop Core. The default is `60`
 minutes. If a window is longer than this, the app can still start/stop other
 apps, but Core is left running.
+
+### Option: `min_available_memory_mb`
+
+Minimum Linux `MemAvailable` required before Core may be stopped. The default
+is `256` MiB to reduce the chance that Core's peak restart allocation exhausts
+a small host. When less memory is available, the window can still act on apps
+but leaves Core running. Set this option to `0` only if you intentionally want
+to disable the memory guard.
 
 ### Option: `core_start_timeout_seconds`
 
@@ -169,14 +189,11 @@ normal scheduling.
 
 ### Option: `pause_core_watchdog`
 
-When `true`, the app temporarily disables the Home Assistant Core watchdog
-while it intentionally stops and starts Core, then restores the watchdog to its
-previous value after the restore phase completes.
-
-This helps prevent Supervisor from treating the intentionally stopped or still
-booting Core service as unhealthy and restarting it during the same maintenance
-cycle. If Supervisor refuses the option on your installation, Maintenance Window
-logs a warning and continues with the watchdog unchanged.
+Deprecated compatibility option. Maintenance Window never disables the Home
+Assistant Core watchdog, regardless of this value. Supervisor distinguishes an
+intentional `POST /core/stop` from a crash, so pausing the watchdog is not needed.
+Existing configurations may keep the key; set it to `false` to reflect current
+behavior.
 
 ### Option: `list_addons_on_startup`
 
@@ -202,6 +219,14 @@ Startup log lines look like this:
 Use the slug at the start of the line, for example `a0d7b954_ssh`, in
 `stop_addons` or `start_addons`.
 
+### Option: `never_stop_addons`
+
+A global list of app slugs that Maintenance Window must always leave running,
+even if a slug also appears in a global or per-window `stop_addons` list. Use it
+for any monitoring, remote access, or recovery app that is important on your
+host. If a protected app is stopped and a window starts it through
+`start_addons`, it is left running when the window ends.
+
 ### Option: `stop_addons`
 
 A list of app **slugs** to stop during the window. Copy slugs from the
@@ -210,6 +235,12 @@ Core.
 
 The global list is a default. A window can override it with its own
 `stop_addons` list.
+
+Apps whose slugs contain `syslog`, `log`, `metric`, `metrics`, `exporter`, or
+`prometheus` are treated as observability infrastructure and are never stopped.
+Maintenance Window logs a warning when it excludes one. This keeps logs and
+metrics available while Core is being stopped and during any failure. Add other
+critical slugs to `never_stop_addons`.
 
 ### Option: `start_addons`
 
@@ -233,6 +264,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
+min_available_memory_mb: 256
 list_addons_on_startup: true
 stop_addons: []
 start_addons: []
@@ -263,6 +295,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 10
+min_available_memory_mb: 256
 list_addons_on_startup: true
 stop_addons: []
 start_addons: []
@@ -312,6 +345,7 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 60
+min_available_memory_mb: 256
 list_addons_on_startup: true
 stop_addons: []
 start_addons: []
@@ -362,13 +396,12 @@ selector by querying the Supervisor API directly.
 
 ## Recovery
 
-If a real test behaves unexpectedly, disable Watchdog first if possible, then
-stop the app from the HAOS console or SSH:
+Do not disable the Maintenance Window Watchdog. If a test behaves unexpectedly,
+use the HAOS console or SSH to start Core and restart the app:
 
 ```bash
-ha addons stop 5e912390_maintenance_window
-ha supervisor restart
-ha core restart
+ha core start
+ha addons restart 5e912390_maintenance_window
 ```
 
 If your repository hash differs, list apps and use the displayed slug. The CLI

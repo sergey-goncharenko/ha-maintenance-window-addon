@@ -1,0 +1,7 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+
+mkdir -p /run/maintenance-window-health
+printf 'ok\n' > /run/maintenance-window-health/health
+
+exec /bin/busybox httpd -f -p 8099 -h /run/maintenance-window-health

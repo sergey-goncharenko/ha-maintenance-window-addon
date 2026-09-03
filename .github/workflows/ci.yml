@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   validate:
@@ -27,6 +28,7 @@ jobs:
           bash -n maintenance_window/run.sh
           bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/run
           bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish
+          bash -n maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window_health/run
           bash -n scripts/test_scheduler_restore.sh
 
       - name: Install validation tools
@@ -41,6 +43,7 @@ jobs:
             maintenance_window/run.sh \
             maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/run \
             maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window/finish \
+            maintenance_window/rootfs/etc/s6-overlay/s6-rc.d/maintenance_window_health/run \
             scripts/test_scheduler_restore.sh
 
       - name: Test scheduler restore recovery
@@ -64,3 +67,48 @@ jobs:
             --build-arg BUILD_VERSION="$(python -c 'import json; print(json.load(open("maintenance_window/config.json"))["version"])')" \
             --tag maintenance-window-addon:test \
             maintenance_window
+
+      - name: Smoke-test watchdog endpoint
+        run: |
+          data_dir="$(mktemp -d)"
+          container_name="maintenance-window-smoke"
+
+          trap 'docker rm --force "${container_name}" >/dev/null 2>&1 || true; rm -rf "${data_dir}"' EXIT
+
+          cat > "${data_dir}/options.json" <<'JSON'
+          {
+            "log_level": "info",
+            "dry_run": true,
+            "restart_core": false,
+            "core_stop_confirmation": "",
+            "startup_grace_seconds": 300,
+            "max_core_stop_minutes": 60,
+            "min_available_memory_mb": 256,
+            "core_start_timeout_seconds": 600,
+            "restore_stagger_seconds": 15,
+            "pause_core_watchdog": false,
+            "list_addons_on_startup": false,
+            "never_stop_addons": [],
+            "stop_addons": [],
+            "start_addons": [],
+            "windows": []
+          }
+          JSON
+
+          docker run --detach \
+            --name "${container_name}" \
+            --env SUPERVISOR_TOKEN=test-token \
+            --publish 127.0.0.1:18099:8099 \
+            --volume "${data_dir}:/data" \
+            maintenance-window-addon:test
+
+          for _ in {1..30}; do
+            if response="$(curl --fail --silent http://127.0.0.1:18099/health)" \
+              && [[ "${response}" == "ok" ]]; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs "${container_name}"
+          exit 1

@@ -80,6 +80,7 @@ def require_keys(config: dict) -> None:
         "init",
         "startup",
         "boot",
+        "watchdog",
         "hassio_api",
         "hassio_role",
         "options",
@@ -139,7 +140,9 @@ def validate_safety_defaults(config: dict) -> None:
         "core_stop_confirmation": "",
         "startup_grace_seconds": 300,
         "max_core_stop_minutes": 60,
+        "min_available_memory_mb": 256,
         "restore_stagger_seconds": 15,
+        "pause_core_watchdog": False,
     }
 
     for key, value in expected.items():
@@ -160,6 +163,8 @@ def validate_apparmor(config: dict) -> None:
         apparmor_text = apparmor_file.read_text(encoding="utf-8")
         if "/addon_config/** rwk," not in apparmor_text:
             fail("AppArmor profile must allow /addon_config/** rwk for add-on inventory output")
+        if "/proc/meminfo r," not in apparmor_text:
+            fail("AppArmor profile must allow /proc/meminfo reads for the memory guard")
 
 
 def validate_line_endings() -> None:
@@ -169,6 +174,9 @@ def validate_line_endings() -> None:
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "run",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "finish",
         ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window" / "type",
+        ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window_health" / "run",
+        ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "maintenance_window_health" / "type",
+        ADDON / "rootfs" / "etc" / "s6-overlay" / "s6-rc.d" / "user" / "contents.d" / "maintenance_window_health",
         ROOT / "scripts" / "test_scheduler_restore.sh",
     ]
     apparmor_file = ADDON / "apparmor.txt"
@@ -192,6 +200,35 @@ def validate_s6_runner() -> None:
         fail("s6 run script must call the sourced main function, not 'exec main'")
     if not re.search(r"^main$", text, re.MULTILINE):
         fail("s6 run script must call main after sourcing scheduler.sh")
+
+
+def validate_watchdog() -> None:
+    config = load_config()
+    health_service = (
+        ADDON
+        / "rootfs"
+        / "etc"
+        / "s6-overlay"
+        / "s6-rc.d"
+        / "maintenance_window_health"
+    )
+    health_bundle_entry = (
+        ADDON
+        / "rootfs"
+        / "etc"
+        / "s6-overlay"
+        / "s6-rc.d"
+        / "user"
+        / "contents.d"
+        / "maintenance_window_health"
+    )
+
+    if config.get("watchdog") != "http://[HOST]:8099/health":
+        fail("watchdog must monitor the internal Maintenance Window health endpoint")
+    if (health_service / "type").read_text(encoding="utf-8") != "longrun\n":
+        fail("watchdog health service type must be 'longrun' followed by LF")
+    if not health_bundle_entry.exists():
+        fail("watchdog health service is not enabled in the s6 user bundle")
 
 
 def png_dimensions(path: Path) -> tuple[int, int]:
@@ -227,6 +264,7 @@ def main() -> None:
     validate_apparmor(config)
     validate_line_endings()
     validate_s6_runner()
+    validate_watchdog()
     validate_artwork()
     print("Add-on metadata validation passed.")
 

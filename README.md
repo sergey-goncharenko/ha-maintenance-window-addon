@@ -50,9 +50,11 @@ restart_core: false
 core_stop_confirmation: ""
 startup_grace_seconds: 300
 max_core_stop_minutes: 10
+min_available_memory_mb: 256
 core_start_timeout_seconds: 600
 restore_stagger_seconds: 15
-pause_core_watchdog: true
+pause_core_watchdog: false
+never_stop_addons: []
 stop_addons: []
 start_addons: []
 windows:
@@ -133,32 +135,38 @@ The default configuration is non-mutating: `dry_run` is enabled and Core restart
 are disabled. To allow Home Assistant Core to be stopped, you must explicitly set
 `restart_core: true` and `core_stop_confirmation: STOP_CORE`. The app also
 blocks Core stops during a startup grace period and blocks windows longer than
-the configured maximum Core stop duration. During intentional Core stop/start
-windows, it can temporarily pause the Home Assistant Core watchdog and restores
-the previous watchdog setting after Core recovery.
+the configured maximum Core stop duration or when less than 256 MiB of host
+memory is available by default. It refuses all real maintenance actions unless
+Supervisor reports that the Maintenance Window app Watchdog is enabled. The
+app never disables the Home Assistant Core watchdog.
 
 > ⚠️ This app can stop Home Assistant Core. While Core is stopped, automations,
 > the UI, and integrations are unavailable. The app itself runs independently
 > of Core and is responsible for starting Core again at the end of the window.
+> Keep its Watchdog enabled so Supervisor can restart it after a crash.
+
+Logging and metrics apps are automatically excluded from `stop_addons`, and
+`never_stop_addons` can protect additional app slugs. Core is stopped before
+ordinary selected apps so observability remains available for the riskiest
+operation.
 
 ## Development note
 
 This project was developed with AI assistance, with human review and iterative
 testing throughout. It has been personally tested on a real Home Assistant OS
 setup, including dry-run validation, real Core stop/start windows, app
-stop/start restore, watchdog pause/restore, and recovery behavior. Even so,
+stop/start restore, watchdog recovery, and recovery behavior. Even so,
 please test carefully on your own system before relying on it for unattended
 maintenance.
 
 ## Recovery
 
-If a test behaves unexpectedly, disable Watchdog first, then stop the app from
-the HAOS console or SSH:
+Do not disable the Maintenance Window Watchdog. If a test behaves unexpectedly,
+start Core and restart the app from the HAOS console or SSH:
 
 ```bash
-ha addons stop 5e912390_maintenance_window
-ha supervisor restart
-ha core restart
+ha core start
+ha addons restart 5e912390_maintenance_window
 ```
 
 If your repository hash differs, find the slug with:
