@@ -204,6 +204,7 @@ def validate_s6_runner() -> None:
 
 def validate_watchdog() -> None:
     config = load_config()
+    dockerfile = (ADDON / "Dockerfile").read_text(encoding="utf-8")
     health_service = (
         ADDON
         / "rootfs"
@@ -225,6 +226,12 @@ def validate_watchdog() -> None:
 
     if config.get("watchdog") != "http://[HOST]:8099/health":
         fail("watchdog must monitor the internal Maintenance Window health endpoint")
+    if "busybox-extras" not in dockerfile:
+        fail("Dockerfile must install busybox-extras for the watchdog health server")
+    if "/bin/busybox-extras httpd" not in (health_service / "run").read_text(
+        encoding="utf-8"
+    ):
+        fail("watchdog health service must use the busybox-extras httpd applet")
     if (health_service / "type").read_text(encoding="utf-8") != "longrun\n":
         fail("watchdog health service type must be 'longrun' followed by LF")
     if not health_bundle_entry.exists():

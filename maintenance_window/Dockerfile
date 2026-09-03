@@ -11,6 +11,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 #   tzdata    - timezone data so schedules respect the configured TZ
 RUN apk add --no-cache \
     bash \
+    busybox-extras \
     jq \
     curl \
     coreutils \
