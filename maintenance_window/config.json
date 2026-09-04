@@ -1,6 +1,6 @@
 {
   "name": "Maintenance Window",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "slug": "maintenance_window",
   "description": "Scheduled quiet mode: stop Home Assistant Core (and optionally selected apps) for a short maintenance window, then restart automatically.",
   "url": "https://github.com/sergey-goncharenko/ha-maintenance-window-addon/tree/main/maintenance_window",
@@ -12,6 +12,7 @@
   "init": false,
   "startup": "services",
   "boot": "auto",
+  "watchdog": "http://[HOST]:8099/health",
   "hassio_api": true,
   "hassio_role": "manager",
   "homeassistant_api": true,
@@ -25,10 +26,12 @@
     "core_stop_confirmation": "",
     "startup_grace_seconds": 300,
     "max_core_stop_minutes": 60,
+    "min_available_memory_mb": 256,
     "core_start_timeout_seconds": 600,
     "restore_stagger_seconds": 15,
-    "pause_core_watchdog": true,
+    "pause_core_watchdog": false,
     "list_addons_on_startup": true,
+    "never_stop_addons": [],
     "stop_addons": [],
     "start_addons": [],
     "windows": [
@@ -56,10 +59,14 @@
     "core_stop_confirmation": "str",
     "startup_grace_seconds": "int(0,86400)",
     "max_core_stop_minutes": "int(1,1440)",
+    "min_available_memory_mb": "int(0,65536)",
     "core_start_timeout_seconds": "int(0,3600)",
     "restore_stagger_seconds": "int(0,300)",
     "pause_core_watchdog": "bool",
     "list_addons_on_startup": "bool",
+    "never_stop_addons": [
+      "str"
+    ],
     "stop_addons": [
       "str"
     ],

@@ -28,6 +28,9 @@ profile maintenance_window flags=(attach_disconnected,mediate_deleted) {
   /usr/lib/maintenance-window/** r,
   /usr/bin/maintenance-window-run.sh ix,
 
+  # Host memory safety guard.
+  /proc/meminfo r,
+
   # Add-on state and temporary files.
   /data/** rwk,
   /addon_config/** rwk,

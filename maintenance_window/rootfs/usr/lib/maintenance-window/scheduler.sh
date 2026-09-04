@@ -31,6 +31,7 @@ readonly HOMEASSISTANT_API="${SUPERVISOR_API}/core/api"
 readonly ADDON_SLUG="maintenance_window"
 readonly NO_WINDOW_SLEEP_SECONDS="300"
 readonly WINDOW_STATE_FILE="${WINDOW_STATE_FILE:-/data/maintenance-window-state.json}"
+readonly MEMINFO_FILE="${MEMINFO_FILE:-/proc/meminfo}"
 readonly ADDON_INVENTORY_FILE="/addon_config/available_addons.md"
 readonly SUPERVISOR_CONNECT_TIMEOUT_SECONDS="5"
 readonly SUPERVISOR_REQUEST_TIMEOUT_SECONDS="15"
@@ -130,6 +131,35 @@ core_state() {
 
     response="$(supervisor_api "GET" "/core/info")"
     jq --raw-output '.data.state // empty' <<< "${response}"
+}
+
+# -----------------------------------------------------------------------------
+# Return whether Supervisor will restart this app if its container dies.
+# -----------------------------------------------------------------------------
+addon_watchdog_state() {
+    local response
+
+    response="$(supervisor_api "GET" "/addons/self/info")"
+    jq --raw-output 'if .data.watchdog == null then empty else .data.watchdog end' <<< "${response}"
+}
+
+# -----------------------------------------------------------------------------
+# Fail closed when Supervisor cannot guarantee this app will be restarted.
+# -----------------------------------------------------------------------------
+require_addon_watchdog() {
+    local action="${1}"
+    local watchdog_state
+
+    if ! watchdog_state="$(supervisor_state_with_backoff "Maintenance Window app watchdog state" addon_watchdog_state)"; then
+        bashio::log.warning "${action} blocked because the Maintenance Window app watchdog could not be verified."
+        return 1
+    fi
+    if [[ "${watchdog_state}" != "true" ]]; then
+        bashio::log.warning "${action} blocked because the Maintenance Window app watchdog is disabled. Enable Watchdog on the app Info page before allowing maintenance actions."
+        return 1
+    fi
+
+    return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -258,6 +288,20 @@ config_int() {
 }
 
 # -----------------------------------------------------------------------------
+# Return Linux MemAvailable in MiB.
+# -----------------------------------------------------------------------------
+available_memory_mb() {
+    local available_kb
+
+    available_kb="$(awk '$1 == "MemAvailable:" { print $2; exit }' "${MEMINFO_FILE}")"
+    if [[ ! "${available_kb}" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+
+    echo "$(( available_kb / 1024 ))"
+}
+
+# -----------------------------------------------------------------------------
 # Return true when this window defines app action overrides.
 # -----------------------------------------------------------------------------
 window_has_app_action_override() {
@@ -321,6 +365,32 @@ config_list_with_fallback() {
 }
 
 # -----------------------------------------------------------------------------
+# Return true when a global list option contains an exact app slug.
+# -----------------------------------------------------------------------------
+config_list_contains() {
+    local key="${1}"
+    local target="${2}"
+    local item
+
+    while IFS= read -r item || [[ -n "${item}" ]]; do
+        if [[ "${item}" == "${target}" ]]; then
+            return 0
+        fi
+    done < <(bashio::config "${key}")
+
+    return 1
+}
+
+# -----------------------------------------------------------------------------
+# Identify apps whose loss would hide failures during the riskiest actions.
+# -----------------------------------------------------------------------------
+addon_is_observability() {
+    local slug="${1,,}"
+
+    [[ "${slug}" =~ (syslog|log|metrics?|exporter|prometheus) ]]
+}
+
+# -----------------------------------------------------------------------------
 # Return true when stopping Core is deliberately armed and safe for this window.
 # -----------------------------------------------------------------------------
 should_stop_core_for_window() {
@@ -329,6 +399,8 @@ should_stop_core_for_window() {
     local confirmation
     local startup_grace_seconds
     local max_core_stop_minutes
+    local min_available_memory_mb
+    local memory_available_mb
     local uptime_seconds
 
     if ! window_restart_core_enabled "${window_index}"; then
@@ -353,6 +425,24 @@ should_stop_core_for_window() {
     if (( duration_minutes > max_core_stop_minutes )); then
         bashio::log.warning "Core stop blocked because window duration (${duration_minutes} min) exceeds max_core_stop_minutes (${max_core_stop_minutes} min)."
         return 1
+    fi
+
+    min_available_memory_mb="$(config_int 'min_available_memory_mb' 256)"
+    if (( min_available_memory_mb > 0 )); then
+        if ! memory_available_mb="$(available_memory_mb)"; then
+            bashio::log.warning "Core stop blocked because available host memory could not be verified. Set min_available_memory_mb to 0 to disable this guard."
+            return 1
+        fi
+        if (( memory_available_mb < min_available_memory_mb )); then
+            bashio::log.warning "Core stop blocked because only ${memory_available_mb} MiB is available; min_available_memory_mb requires ${min_available_memory_mb} MiB."
+            return 1
+        fi
+    fi
+
+    if ! bashio::config.true 'dry_run'; then
+        if ! require_addon_watchdog "Core stop"; then
+            return 1
+        fi
     fi
 
     return 0
@@ -384,10 +474,10 @@ stop_addon() {
 }
 
 # -----------------------------------------------------------------------------
-# Stop an app only if it is currently running.
-# Returns 0 when the app should be restarted at the end of the window.
+# Plan to stop an app only if it is currently running. This function must not
+# mutate Supervisor state because recovery intent is persisted after planning.
 # -----------------------------------------------------------------------------
-stop_addon_if_running() {
+plan_addon_stop() {
     local slug="${1}"
     local state
 
@@ -397,13 +487,11 @@ stop_addon_if_running() {
     fi
 
     if bashio::config.true 'dry_run'; then
-        bashio::log.notice "[dry_run] Would inspect and stop app if running: ${slug}"
         return 0
     fi
 
     if ! state="$(addon_state "${slug}")"; then
         bashio::log.warning "Could not inspect app '${slug}'; will try to stop it and restart it later."
-        stop_addon "${slug}" || true
         return 0
     fi
 
@@ -412,7 +500,6 @@ stop_addon_if_running() {
         return 1
     fi
 
-    stop_addon "${slug}" || true
     return 0
 }
 
@@ -526,10 +613,10 @@ restore_stop_addon() {
 }
 
 # -----------------------------------------------------------------------------
-# Start an app only if it is currently stopped.
-# Returns 0 when the app should be stopped at the end of the window.
+# Plan to start an app only if it is currently stopped. This function must not
+# mutate Supervisor state because recovery intent is persisted after planning.
 # -----------------------------------------------------------------------------
-start_addon_if_stopped() {
+plan_temporary_addon_start() {
     local slug="${1}"
     local state
 
@@ -539,13 +626,11 @@ start_addon_if_stopped() {
     fi
 
     if bashio::config.true 'dry_run'; then
-        bashio::log.notice "[dry_run] Would inspect and start app if stopped: ${slug}"
         return 0
     fi
 
     if ! state="$(addon_state "${slug}")"; then
         bashio::log.warning "Could not inspect app '${slug}'; will try to start it and stop it later."
-        start_addon "${slug}" || true
         return 0
     fi
 
@@ -554,7 +639,6 @@ start_addon_if_stopped() {
         return 1
     fi
 
-    start_addon "${slug}" || true
     return 0
 }
 
@@ -597,41 +681,9 @@ set_core_watchdog() {
     supervisor_api_json "POST" "/core/options" "{\"watchdog\":${desired_state}}" > /dev/null
 }
 
-core_watchdog_restore_value() {
-    local state
-
-    if ! bashio::config.true 'pause_core_watchdog'; then
-        echo 'null'
-        return 0
-    fi
-
-    if ! state="$(core_watchdog_state)"; then
-        bashio::log.warning "Could not inspect Home Assistant Core watchdog state; leaving it unchanged." >&2
-        echo 'null'
-        return 0
-    fi
-
-    case "${state}" in
-        true|false)
-            echo "${state}"
-            ;;
-        *)
-            bashio::log.warning "Home Assistant Core watchdog state is unknown; leaving it unchanged." >&2
-            echo 'null'
-            ;;
-    esac
-}
-
 pause_core_watchdog_if_needed() {
-    local restore_value="${1}"
-
-    if [[ "${restore_value}" != "true" ]]; then
-        return 0
-    fi
-
-    bashio::log.info "Pausing Home Assistant Core watchdog during the maintenance window."
-    if ! set_core_watchdog false; then
-        bashio::log.warning "Could not pause Home Assistant Core watchdog; continuing with watchdog unchanged."
+    if bashio::config.true 'pause_core_watchdog'; then
+        bashio::log.warning "The deprecated 'pause_core_watchdog' option is enabled; leaving the Home Assistant Core watchdog running for crash safety."
     fi
 }
 
@@ -797,6 +849,35 @@ update_window_state() {
     rm -f "${temporary_state_file}"
     bashio::log.error "Failed to atomically update active-window recovery state."
     return 1
+}
+
+# -----------------------------------------------------------------------------
+# Reconcile a persisted Core watchdog restore intent before any other action.
+# -----------------------------------------------------------------------------
+reconcile_core_watchdog_from_state() {
+    local restore_value
+
+    if [[ ! -f "${WINDOW_STATE_FILE}" ]]; then
+        return 0
+    fi
+
+    restore_value="$(jq --raw-output '
+        if .core_watchdog_restore == true then "true"
+        elif .core_watchdog_restore == false then "false"
+        else "null"
+        end
+    ' "${WINDOW_STATE_FILE}")"
+
+    if ! restore_core_watchdog_if_needed "${restore_value}"; then
+        return 1
+    fi
+
+    if [[ "${restore_value}" != "null" ]] \
+        && ! update_window_state '.core_watchdog_restore = null'; then
+        return 1
+    fi
+
+    return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -1051,6 +1132,12 @@ recover_window_from_state() {
         return 0
     fi
 
+    if ! reconcile_core_watchdog_from_state; then
+        bashio::log.error "Could not reconcile the persisted Home Assistant Core watchdog state; ending the interrupted window immediately."
+        restore_window_until_complete true || true
+        return 0
+    fi
+
     window_end_epoch="$(jq --raw-output '.window_end_epoch // 0' "${WINDOW_STATE_FILE}")"
     window_name="$(jq --raw-output '.window_name // "unknown maintenance window"' "${WINDOW_STATE_FILE}")"
     now_epoch="$(date +%s)"
@@ -1091,47 +1178,73 @@ handle_shutdown() {
 # Argument: window duration in minutes.
 #
 # Order of operations:
-#   1. Start temporary apps that should be available during the window.
-#   2. Stop selected apps first (they may depend on Core).
-#   3. Stop Core.
-#   4. Sleep for the window duration.
-#   5. Start Core and stopped apps, then stop temporary apps.
+#   1. Plan all actions and persist their restore intent.
+#   2. Start temporary apps that should be available during the window.
+#   3. Stop Core while observability apps are still running.
+#   4. Stop selected non-observability apps.
+#   5. Sleep for the window duration.
+#   6. Start Core and stopped apps, then stop temporary apps.
 # -----------------------------------------------------------------------------
 run_maintenance_window() {
     local duration_minutes="${1}"
     local name="${2:-Scheduled maintenance}"
     local window_index="${3}"
     local slug
+    local -a addons_to_start=()
     local -a addons_to_restart=()
     local -a temporary_addons_to_stop=()
     local core_will_stop="false"
     local core_watchdog_restore="null"
+    local mutating_actions_planned="false"
     local window_end_epoch
 
     bashio::log.notice "=== Entering maintenance window: ${name} (${duration_minutes} min) ==="
     window_end_epoch="$(( $(date +%s) + duration_minutes * 60 ))"
 
-    # 1: start apps that should be temporarily available during the window.
+    # 1: plan every action without mutating Supervisor state.
     while IFS= read -r slug; do
         [[ -z "${slug}" ]] && continue
-        if start_addon_if_stopped "${slug}"; then
-            temporary_addons_to_stop+=("${slug}")
+        if plan_temporary_addon_start "${slug}"; then
+            addons_to_start+=("${slug}")
+            if config_list_contains 'never_stop_addons' "${slug}"; then
+                bashio::log.warning "App '${slug}' will be started but left running because it is listed in never_stop_addons."
+            elif addon_is_observability "${slug}"; then
+                bashio::log.warning "Observability app '${slug}' will be started but left running to preserve logs and metrics."
+            else
+                temporary_addons_to_stop+=("${slug}")
+            fi
         fi
     done < <(config_list_with_fallback "windows[${window_index}].start_addons" 'start_addons')
 
-    # 2 + 3: shut things down.
     while IFS= read -r slug; do
         [[ -z "${slug}" ]] && continue
-        if stop_addon_if_running "${slug}"; then
+        if config_list_contains 'never_stop_addons' "${slug}"; then
+            bashio::log.warning "Skipping protected app '${slug}' because it is listed in never_stop_addons."
+            continue
+        fi
+        if addon_is_observability "${slug}"; then
+            bashio::log.warning "Skipping observability app '${slug}' to preserve logs and metrics during maintenance."
+            continue
+        fi
+        if plan_addon_stop "${slug}"; then
             addons_to_restart+=("${slug}")
         fi
     done < <(config_list_with_fallback "windows[${window_index}].stop_addons" 'stop_addons')
 
     if should_stop_core_for_window "${duration_minutes}" "${window_index}"; then
         core_will_stop="true"
-        if ! bashio::config.true 'dry_run'; then
-            core_watchdog_restore="$(core_watchdog_restore_value)"
-        fi
+    fi
+
+    if (( ${#addons_to_start[@]} > 0 || ${#addons_to_restart[@]} > 0 )) \
+        || [[ "${core_will_stop}" == "true" ]]; then
+        mutating_actions_planned="true"
+    fi
+
+    if ! bashio::config.true 'dry_run' \
+        && [[ "${mutating_actions_planned}" == "true" ]] \
+        && ! require_addon_watchdog "Maintenance actions"; then
+        bashio::log.error "Skipping '${name}' because crash recovery is not enabled."
+        return 1
     fi
 
     if ! bashio::config.true 'dry_run'; then
@@ -1142,22 +1255,33 @@ run_maintenance_window() {
             "${core_watchdog_restore}" \
             "${window_end_epoch}" \
             "${name}"; then
-            core_will_stop="false"
-            core_watchdog_restore="null"
+            bashio::log.error "Skipping all maintenance actions because their recovery intent could not be persisted."
+            return 1
         fi
     fi
 
+    # 2: start temporary apps after their cleanup intent is durable.
+    for slug in "${addons_to_start[@]}"; do
+        start_addon "${slug}" || true
+    done
+
+    # 3: stop Core before any configured app can hide this operation.
     if [[ "${core_will_stop}" == "true" ]]; then
-        pause_core_watchdog_if_needed "${core_watchdog_restore}"
+        pause_core_watchdog_if_needed
         if ! stop_core; then
             bashio::log.warning "Core stop was not acknowledged; keeping the recovery state and continuing the window."
         fi
     fi
 
-    # 4: hold the window open until the persisted absolute end time.
+    # 4: stop ordinary apps after Core. Observability apps were excluded above.
+    for slug in "${addons_to_restart[@]}"; do
+        stop_addon "${slug}" || true
+    done
+
+    # 5: hold the window open until the persisted absolute end time.
     wait_until_epoch "${window_end_epoch}"
 
-    # 5: bring things back using the same path as crash/watchdog recovery.
+    # 6: bring things back using the same path as crash/watchdog recovery.
     if bashio::config.true 'dry_run'; then
         if [[ "${core_will_stop}" == "true" ]]; then
             start_core true

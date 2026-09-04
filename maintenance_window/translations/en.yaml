@@ -33,6 +33,11 @@ configuration:
     description: >-
       Maximum maintenance window duration that is allowed to stop Home Assistant
       Core. Longer windows can still start/stop apps, but Core stays running.
+  min_available_memory_mb:
+    name: Minimum available memory for Core stop
+    description: >-
+      Minimum host MemAvailable in MiB required before Core may be stopped.
+      This reduces restart pressure on small hosts. Set to 0 to disable.
   core_start_timeout_seconds:
     name: Core start readiness timeout
     description: >-
@@ -45,16 +50,21 @@ configuration:
       Number of seconds to wait before each app is restored after Core is ready.
       Staggering reduces simultaneous memory and storage I/O pressure.
   pause_core_watchdog:
-    name: Pause Core watchdog during windows
+    name: Pause Core watchdog during windows (deprecated)
     description: >-
-      Temporarily disables the Home Assistant Core watchdog while Maintenance
-      Window intentionally stops and starts Core, then restores the previous
-      watchdog setting after Core is restored.
+      Kept for configuration compatibility but no longer disables the Home
+      Assistant Core watchdog. Leaving the watchdog running prevents a killed
+      Maintenance Window process from stranding Core offline.
   list_addons_on_startup:
     name: List installed apps on startup
     description: >-
       When enabled, writes a copyable Supervisor app inventory to the app config
       folder and logs each app slug. This helps fill stop/start lists.
+  never_stop_addons:
+    name: Apps that must never be stopped
+    description: >-
+      App slugs that Maintenance Window must always leave running. Logging,
+      metrics, exporter, Prometheus, and syslog apps are protected automatically.
   stop_addons:
     name: Default apps to stop
     description: >-

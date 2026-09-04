@@ -11,6 +11,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 #   tzdata    - timezone data so schedules respect the configured TZ
 RUN apk add --no-cache \
     bash \
+    busybox-extras \
     jq \
     curl \
     coreutils \
@@ -23,7 +24,8 @@ COPY rootfs /
 COPY run.sh /usr/bin/maintenance-window-run.sh
 RUN chmod a+x /usr/bin/maintenance-window-run.sh \
     && chmod a+x /etc/s6-overlay/s6-rc.d/maintenance_window/run \
-    && chmod a+x /etc/s6-overlay/s6-rc.d/maintenance_window/finish
+    && chmod a+x /etc/s6-overlay/s6-rc.d/maintenance_window/finish \
+    && chmod a+x /etc/s6-overlay/s6-rc.d/maintenance_window_health/run
 
 # Build metadata labels (filled in by the Home Assistant builder).
 ARG BUILD_ARCH
